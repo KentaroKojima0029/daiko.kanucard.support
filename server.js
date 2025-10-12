@@ -732,6 +732,109 @@ app.get('/api/public/application/:id/progress', (req, res) => {
     }
 });
 
+// 9-1. ユーザーフォーム送信用公開API（認証不要・CORS対応）
+app.post('/api/public/form-submit', async (req, res) => {
+    try {
+        const {
+            contactName,
+            contactEmail,
+            contactBody,
+            plan,
+            serviceOption,
+            purchaseOffer,
+            returnMethod,
+            inspectionOption,
+            items,
+            totalQuantity,
+            totalDeclaredValue,
+            totalAcquisitionValue,
+            totalFee,
+            estimatedTax,
+            estimatedGradingFee,
+            totalEstimatedFee
+        } = req.body;
+
+        // バリデーション
+        if (!contactName || !contactEmail || !items || items.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: '必須項目が不足しています'
+            });
+        }
+
+        console.log('Public form submission received:', { contactName, contactEmail, itemCount: items.length });
+
+        // プラン情報からcountryとplanTypeを抽出
+        let country = null;
+        let planType = null;
+
+        if (plan && typeof plan === 'string') {
+            if (plan.includes('日本') || plan.includes('ノーマル 日本') || plan.includes('70％保証 日本')) {
+                country = 'japan';
+            } else if (plan.includes('アメリカ') || plan.includes('USA')) {
+                country = 'usa';
+            }
+
+            if (plan.includes('ノーマル') && !plan.includes('保証')) {
+                planType = 'normal';
+            } else if (plan.includes('70％保証') || plan.includes('保証')) {
+                planType = 'guarantee';
+            }
+        }
+
+        // ユーザーの作成または取得
+        const user = dbService.findOrCreateUser({
+            email: contactEmail,
+            name: contactName,
+            phone: null
+        });
+
+        // カード情報を変換
+        const cards = items.map(item => ({
+            cardName: item.itemName,
+            quantity: item.quantity || 1,
+            declaredValue: item.declaredValue || 0,
+            acquisitionValue: item.acquisitionValue || 0
+        }));
+
+        // PSAリクエストの作成
+        const requestData = {
+            userId: user.id,
+            shopifyCustomerId: null,
+            status: 'pending',
+            country: country,
+            planType: planType,
+            serviceType: 'psa-grading',
+            totalDeclaredValue: totalDeclaredValue || 0,
+            totalEstimatedGradingFee: typeof estimatedGradingFee === 'string' ?
+                parseInt(estimatedGradingFee.replace(/[^0-9]/g, '')) :
+                (estimatedGradingFee || 0),
+            customerNotes: contactBody || null,
+            cards: cards
+        };
+
+        const application = dbService.createPSARequest(requestData);
+
+        console.log('PSA request created successfully:', application.id);
+
+        res.json({
+            success: true,
+            message: 'お申し込みを受け付けました',
+            data: {
+                applicationId: application.id,
+                userId: user.id
+            }
+        });
+
+    } catch (error) {
+        console.error('Error processing public form submission:', error);
+        res.status(500).json({
+            success: false,
+            error: 'サーバーエラーが発生しました。もう一度お試しください。'
+        });
+    }
+});
+
 // 10. 管理者ログ取得
 app.get('/api/admin/logs', authenticateToken, (req, res) => {
     try {
