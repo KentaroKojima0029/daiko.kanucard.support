@@ -30,4 +30,4 @@ services:
       - key: FTP_PASSWORD
         sync: false
       - key: BASE_URL
-        value: https://new-daiko-form.onrender.com
+        value: https://kanucard-daiko-support.onrender.com

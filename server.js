@@ -150,22 +150,15 @@ async function initializeAdmin() {
 
 initializeAdmin();
 
-// 認証ミドルウェア
+// 認証ミドルウェア（無効化 - 全てのリクエストを通す）
 function authenticateToken(req, res, next) {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (!token) {
-        return res.status(401).json({ error: '認証が必要です' });
-    }
-
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) {
-            return res.status(403).json({ error: 'トークンが無効です' });
-        }
-        req.user = user;
-        next();
-    });
+    // 認証をスキップし、ダミーのユーザー情報を設定
+    req.user = {
+        id: 'admin',
+        email: 'collection@kanucard.com',
+        role: 'admin'
+    };
+    next();
 }
 
 // 承認キー生成

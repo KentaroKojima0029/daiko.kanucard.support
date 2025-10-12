@@ -36,7 +36,7 @@
         }
 
         .dashboard {
-            display: none;
+            display: block;
             background: white;
             border-radius: 15px;
             padding: 30px;
@@ -286,28 +286,10 @@
 </head>
 <body>
     <div class="container">
-        <!-- ログイン画面 -->
-        <div class="login-container" id="loginContainer">
-            <h1 style="text-align: center; margin-bottom: 30px;">PSA代行システム</h1>
-            <div class="error-message" id="loginError"></div>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label for="email">メールアドレス</label>
-                    <input type="email" id="email" required placeholder="collection@kanucard.com">
-                </div>
-                <div class="form-group">
-                    <label for="password">パスワード</label>
-                    <input type="password" id="password" required placeholder="パスワードを入力">
-                </div>
-                <button type="submit" style="width: 100%;">ログイン</button>
-            </form>
-        </div>
-
         <!-- ダッシュボード -->
         <div class="dashboard" id="dashboard">
             <div class="header">
                 <h1>PSA代行買取承認システム</h1>
-                <button class="logout-btn" onclick="logout()">ログアウト</button>
             </div>
 
             <div class="success-message" id="successMessage"></div>
@@ -415,45 +397,13 @@
     </div>
 
     <script>
-        let authToken = localStorage.getItem('authToken');
+        // 認証をスキップ - ダミーのトークンを設定
+        let authToken = 'dummy-token';
 
-        // 初期化
-        if (authToken) {
-            showDashboard();
+        // 初期化 - ページロード時に自動的にデータを読み込む
+        window.addEventListener('DOMContentLoaded', () => {
             loadRequests();
             loadStatistics();
-        }
-
-        // ログインフォーム送信
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-
-            try {
-                const response = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ email, password })
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    authToken = data.token;
-                    localStorage.setItem('authToken', authToken);
-                    showDashboard();
-                    loadRequests();
-                    loadStatistics();
-                } else {
-                    showLoginError(data.error || 'ログインに失敗しました');
-                }
-            } catch (error) {
-                showLoginError('ネットワークエラーが発生しました');
-            }
         });
 
         // 新規申請フォーム送信
@@ -655,19 +605,6 @@
             });
         }
 
-        // ダッシュボード表示
-        function showDashboard() {
-            document.getElementById('loginContainer').style.display = 'none';
-            document.getElementById('dashboard').style.display = 'block';
-        }
-
-        // ログアウト
-        function logout() {
-            localStorage.removeItem('authToken');
-            authToken = null;
-            document.getElementById('loginContainer').style.display = 'block';
-            document.getElementById('dashboard').style.display = 'none';
-        }
 
         // メッセージ表示
         function showSuccess(message) {
@@ -688,14 +625,6 @@
             }, 5000);
         }
 
-        function showLoginError(message) {
-            const element = document.getElementById('loginError');
-            element.textContent = message;
-            element.style.display = 'block';
-            setTimeout(() => {
-                element.style.display = 'none';
-            }, 5000);
-        }
     </script>
 </body>
 </html>
