@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: kanucard-daiko-support
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        value: collection@kanucard.com
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SMTP_HOST
+        value: sv10210.xserver.jp
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_SECURE
+        value: false
+      - key: SMTP_USER
+        value: collection@kanucard.com
+      - key: SMTP_PASS
+        sync: false
+      - key: FTP_HOST
+        value: sv10210.xserver.jp
+      - key: FTP_USER
+        sync: false
+      - key: FTP_PASSWORD
+        sync: false
+      - key: BASE_URL
+        value: https://new-daiko-form.onrender.com
