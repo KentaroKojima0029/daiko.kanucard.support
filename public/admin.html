@@ -637,24 +637,45 @@
                     <h2 class="content-title">発送スケジュール管理</h2>
                 </div>
 
-                <div class="schedule-card">
-                    <div class="schedule-date" id="currentNextShipDate">未設定</div>
-                    <div class="schedule-label">現在の次回発送予定日</div>
+                <div class="grid">
+                    <div class="schedule-card">
+                        <div style="color: #2c3e50; font-size: 16px; margin-bottom: 10px;">🇺🇸 アメリカ発送</div>
+                        <div class="schedule-date" id="currentNextShipDateUSA">未設定</div>
+                        <div class="schedule-label">次回発送予定日</div>
+                    </div>
+                    <div class="schedule-card">
+                        <div style="color: #2c3e50; font-size: 16px; margin-bottom: 10px;">🇯🇵 日本発送</div>
+                        <div class="schedule-date" id="currentNextShipDateJapan">未設定</div>
+                        <div class="schedule-label">次回発送予定日</div>
+                    </div>
                 </div>
 
-                <div class="card">
-                    <div class="form-group">
-                        <label>次回発送日</label>
-                        <input type="date" id="nextShipDate">
+                <div class="grid">
+                    <div class="card">
+                        <h3 style="color: #2c3e50; margin-bottom: 20px;">🇺🇸 アメリカ発送スケジュール</h3>
+                        <div class="form-group">
+                            <label>次回発送日</label>
+                            <input type="date" id="nextShipDateUSA">
+                        </div>
+                        <div class="form-group">
+                            <label>備考</label>
+                            <textarea id="scheduleNotesUSA" rows="3"></textarea>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>返送予定日</label>
-                        <input type="date" id="estimatedReturnDate">
+                    <div class="card">
+                        <h3 style="color: #2c3e50; margin-bottom: 20px;">🇯🇵 日本発送スケジュール</h3>
+                        <div class="form-group">
+                            <label>次回発送日</label>
+                            <input type="date" id="nextShipDateJapan">
+                        </div>
+                        <div class="form-group">
+                            <label>備考</label>
+                            <textarea id="scheduleNotesJapan" rows="3"></textarea>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>備考</label>
-                        <textarea id="scheduleNotes" rows="4"></textarea>
-                    </div>
+                </div>
+
+                <div style="text-align: center; margin-top: 20px;">
                     <button class="btn btn-primary" onclick="updateSchedule()">スケジュールを更新</button>
                 </div>
             </div>
@@ -800,8 +821,21 @@
             document.getElementById('totalApplications').textContent = stats.totalApplications || 0;
             document.getElementById('pendingApprovals').textContent = stats.pendingApprovals || 0;
             document.getElementById('unreadMessages').textContent = stats.unreadMessages || 0;
+
+            // アメリカと日本の次回発送日を表示（最も近い日付を表示）
+            let nextDate = null;
+            if (stats.nextShipDateUSA && stats.nextShipDateJapan) {
+                const usaDate = new Date(stats.nextShipDateUSA);
+                const japanDate = new Date(stats.nextShipDateJapan);
+                nextDate = usaDate < japanDate ? usaDate : japanDate;
+            } else if (stats.nextShipDateUSA) {
+                nextDate = new Date(stats.nextShipDateUSA);
+            } else if (stats.nextShipDateJapan) {
+                nextDate = new Date(stats.nextShipDateJapan);
+            }
+
             document.getElementById('nextShipDate').textContent =
-                stats.nextShipDate ? new Date(stats.nextShipDate).toLocaleDateString('ja-JP') : '-';
+                nextDate ? nextDate.toLocaleDateString('ja-JP') : '-';
 
             // バッジ更新
             updateBadge('applicationsBadge', stats.pendingApplications);
@@ -941,18 +975,30 @@
         }
 
         function updateScheduleDisplay() {
-            if (currentData.schedule.nextShipDate) {
-                document.getElementById('currentNextShipDate').textContent =
-                    new Date(currentData.schedule.nextShipDate).toLocaleDateString('ja-JP');
-                document.getElementById('nextShipDate').value =
-                    currentData.schedule.nextShipDate.split('T')[0];
+            // アメリカの発送スケジュール
+            if (currentData.schedule.usa?.nextShipDate) {
+                document.getElementById('currentNextShipDateUSA').textContent =
+                    new Date(currentData.schedule.usa.nextShipDate).toLocaleDateString('ja-JP');
+                document.getElementById('nextShipDateUSA').value =
+                    currentData.schedule.usa.nextShipDate.split('T')[0];
+            } else {
+                document.getElementById('currentNextShipDateUSA').textContent = '未設定';
             }
-            if (currentData.schedule.estimatedReturnDate) {
-                document.getElementById('estimatedReturnDate').value =
-                    currentData.schedule.estimatedReturnDate.split('T')[0];
+            if (currentData.schedule.usa?.notes) {
+                document.getElementById('scheduleNotesUSA').value = currentData.schedule.usa.notes;
             }
-            if (currentData.schedule.notes) {
-                document.getElementById('scheduleNotes').value = currentData.schedule.notes;
+
+            // 日本の発送スケジュール
+            if (currentData.schedule.japan?.nextShipDate) {
+                document.getElementById('currentNextShipDateJapan').textContent =
+                    new Date(currentData.schedule.japan.nextShipDate).toLocaleDateString('ja-JP');
+                document.getElementById('nextShipDateJapan').value =
+                    currentData.schedule.japan.nextShipDate.split('T')[0];
+            } else {
+                document.getElementById('currentNextShipDateJapan').textContent = '未設定';
+            }
+            if (currentData.schedule.japan?.notes) {
+                document.getElementById('scheduleNotesJapan').value = currentData.schedule.japan.notes;
             }
         }
 
@@ -1006,9 +1052,14 @@
         // API呼び出し関数
         async function updateSchedule() {
             const scheduleData = {
-                nextShipDate: document.getElementById('nextShipDate').value,
-                estimatedReturnDate: document.getElementById('estimatedReturnDate').value,
-                notes: document.getElementById('scheduleNotes').value
+                usa: {
+                    nextShipDate: document.getElementById('nextShipDateUSA').value,
+                    notes: document.getElementById('scheduleNotesUSA').value
+                },
+                japan: {
+                    nextShipDate: document.getElementById('nextShipDateJapan').value,
+                    notes: document.getElementById('scheduleNotesJapan').value
+                }
             };
 
             try {

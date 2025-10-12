@@ -126,9 +126,14 @@ let dataStore = {
         lastUpdated: new Date().toISOString()
     }),
     schedule: loadData(FILES.schedule, {
-        nextShipDate: null,
-        estimatedReturnDate: null,
-        notes: '',
+        usa: {
+            nextShipDate: null,
+            notes: ''
+        },
+        japan: {
+            nextShipDate: null,
+            notes: ''
+        },
         lastUpdated: new Date().toISOString()
     })
 };
@@ -304,7 +309,8 @@ app.get('/api/schedule', (req, res) => {
 
 app.put('/api/schedule', authenticateToken, (req, res) => {
     dataStore.schedule = {
-        ...req.body,
+        usa: req.body.usa || dataStore.schedule.usa,
+        japan: req.body.japan || dataStore.schedule.japan,
         lastUpdated: new Date().toISOString()
     };
     saveData(FILES.schedule, dataStore.schedule);
@@ -325,7 +331,8 @@ app.get('/api/statistics', authenticateToken, (req, res) => {
             name: s.name,
             status: s.status
         })),
-        nextShipDate: dataStore.schedule.nextShipDate
+        nextShipDateUSA: dataStore.schedule.usa?.nextShipDate,
+        nextShipDateJapan: dataStore.schedule.japan?.nextShipDate
     };
     res.json({ success: true, data: stats });
 });
@@ -345,9 +352,9 @@ app.get('/api/public/schedule', (req, res) => {
     res.json({
         success: true,
         data: {
-            nextShipDate: dataStore.schedule.nextShipDate,
-            estimatedReturnDate: dataStore.schedule.estimatedReturnDate,
-            notes: dataStore.schedule.notes
+            usa: dataStore.schedule.usa,
+            japan: dataStore.schedule.japan,
+            lastUpdated: dataStore.schedule.lastUpdated
         }
     });
 });
