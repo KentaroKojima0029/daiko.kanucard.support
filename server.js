@@ -14,7 +14,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: ['https://new-daiko-form.onrender.com', 'http://localhost:3001'],
+    credentials: true
+}));
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -36,6 +39,17 @@ if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+// データファイルのパス
+const FILES = {
+    applications: path.join(DATA_DIR, 'applications.json'),         // 代行申込
+    progress: path.join(DATA_DIR, 'progress.json'),                // 進捗状況
+    messages: path.join(DATA_DIR, 'messages.json'),                // メッセージ
+    approvals: path.join(DATA_DIR, 'approvals.json'),              // 買取承認
+    serviceStatus: path.join(DATA_DIR, 'service_status.json'),     // サービス状況
+    schedule: path.join(DATA_DIR, 'schedule.json'),                // 発送スケジュール
+    users: path.join(DATA_DIR, 'users.json')                       // ユーザー
+};
+
 // Xserver FTP設定
 const ftpConfig = {
     host: process.env.FTP_HOST || 'sv10210.xserver.jp',
@@ -43,6 +57,390 @@ const ftpConfig = {
     password: process.env.FTP_PASSWORD,
     secure: false
 };
+
+// メール送信設定
+const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'sv10210.xserver.jp',
+    port: parseInt(process.env.SMTP_PORT) || 587,
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: {
+        user: process.env.SMTP_USER || 'collection@kanucard.com',
+        pass: process.env.SMTP_PASS
+    }
+});
+
+// データ読み込み・保存関数
+function loadData(filePath, defaultData = []) {
+    try {
+        if (fs.existsSync(filePath)) {
+            const data = fs.readFileSync(filePath, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (error) {
+        console.error(`Error loading ${filePath}:`, error);
+    }
+    return defaultData;
+}
+
+function saveData(filePath, data) {
+    try {
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+        backupToXserver(filePath);
+    } catch (error) {
+        console.error(`Error saving ${filePath}:`, error);
+    }
+}
+
+// Xserverへのバックアップ
+async function backupToXserver(localPath) {
+    if (!ftpConfig.user || !ftpConfig.password) {
+        return;
+    }
+
+    const client = new Client();
+    try {
+        await client.access(ftpConfig);
+        const remotePath = `/kanucard-backup/${path.basename(localPath)}`;
+        await client.ensureDir('/kanucard-backup');
+        await client.uploadFrom(localPath, remotePath);
+    } catch (error) {
+        console.error('FTP backup error:', error);
+    } finally {
+        client.close();
+    }
+}
+
+// データの初期化
+let dataStore = {
+    applications: loadData(FILES.applications, []),
+    progress: loadData(FILES.progress, []),
+    messages: loadData(FILES.messages, []),
+    approvals: loadData(FILES.approvals, []),
+    serviceStatus: loadData(FILES.serviceStatus, {
+        services: [
+            { id: 'psa-grading', name: 'PSA鑑定', status: 'active', description: 'カード鑑定サービス' },
+            { id: 'purchase', name: '買取', status: 'active', description: 'カード買取サービス' },
+            { id: 'shipping', name: '発送代行', status: 'active', description: 'PSAへの発送代行' }
+        ],
+        announcement: '',
+        lastUpdated: new Date().toISOString()
+    }),
+    schedule: loadData(FILES.schedule, {
+        nextShipDate: null,
+        estimatedReturnDate: null,
+        notes: '',
+        lastUpdated: new Date().toISOString()
+    })
+};
+
+// 認証ミドルウェア（管理者用サイトなので認証なし）
+function authenticateToken(req, res, next) {
+    req.user = {
+        id: 'admin',
+        email: 'collection@kanucard.com',
+        role: 'admin'
+    };
+    next();
+}
+
+// ===== APIエンドポイント =====
+
+// 1. 代行申込管理
+app.get('/api/applications', authenticateToken, (req, res) => {
+    res.json({
+        success: true,
+        data: dataStore.applications
+    });
+});
+
+app.post('/api/applications', authenticateToken, (req, res) => {
+    const application = {
+        id: uuidv4(),
+        ...req.body,
+        createdAt: new Date().toISOString(),
+        status: 'pending'
+    };
+    dataStore.applications.push(application);
+    saveData(FILES.applications, dataStore.applications);
+    res.json({ success: true, data: application });
+});
+
+app.put('/api/applications/:id', authenticateToken, (req, res) => {
+    const index = dataStore.applications.findIndex(a => a.id === req.params.id);
+    if (index === -1) {
+        return res.status(404).json({ error: '申込が見つかりません' });
+    }
+    dataStore.applications[index] = { ...dataStore.applications[index], ...req.body };
+    saveData(FILES.applications, dataStore.applications);
+    res.json({ success: true, data: dataStore.applications[index] });
+});
+
+app.delete('/api/applications/:id', authenticateToken, (req, res) => {
+    dataStore.applications = dataStore.applications.filter(a => a.id !== req.params.id);
+    saveData(FILES.applications, dataStore.applications);
+    res.json({ success: true });
+});
+
+// 2. 進捗状況管理
+app.get('/api/progress', authenticateToken, (req, res) => {
+    res.json({
+        success: true,
+        data: dataStore.progress
+    });
+});
+
+app.post('/api/progress', authenticateToken, (req, res) => {
+    const progress = {
+        id: uuidv4(),
+        applicationId: req.body.applicationId,
+        status: req.body.status,
+        description: req.body.description,
+        createdAt: new Date().toISOString(),
+        updatedBy: req.user.email
+    };
+    dataStore.progress.push(progress);
+    saveData(FILES.progress, dataStore.progress);
+
+    // 申込のステータスも更新
+    const appIndex = dataStore.applications.findIndex(a => a.id === req.body.applicationId);
+    if (appIndex !== -1) {
+        dataStore.applications[appIndex].currentStatus = req.body.status;
+        saveData(FILES.applications, dataStore.applications);
+    }
+
+    res.json({ success: true, data: progress });
+});
+
+// 3. メッセージ管理
+app.get('/api/messages', authenticateToken, (req, res) => {
+    res.json({
+        success: true,
+        data: dataStore.messages
+    });
+});
+
+app.post('/api/messages', authenticateToken, (req, res) => {
+    const message = {
+        id: uuidv4(),
+        applicationId: req.body.applicationId,
+        from: req.body.from || 'admin',
+        to: req.body.to,
+        message: req.body.message,
+        createdAt: new Date().toISOString(),
+        read: false
+    };
+    dataStore.messages.push(message);
+    saveData(FILES.messages, dataStore.messages);
+
+    // メール送信（必要に応じて）
+    if (req.body.sendEmail) {
+        sendMessageEmail(message, req.body.toEmail);
+    }
+
+    res.json({ success: true, data: message });
+});
+
+app.put('/api/messages/:id/read', authenticateToken, (req, res) => {
+    const index = dataStore.messages.findIndex(m => m.id === req.params.id);
+    if (index !== -1) {
+        dataStore.messages[index].read = true;
+        saveData(FILES.messages, dataStore.messages);
+    }
+    res.json({ success: true });
+});
+
+// 4. 買取承認管理（既存機能を拡張）
+app.get('/api/approvals', authenticateToken, (req, res) => {
+    res.json({
+        success: true,
+        data: dataStore.approvals
+    });
+});
+
+app.post('/api/approvals', authenticateToken, async (req, res) => {
+    const approval = {
+        id: uuidv4(),
+        approvalKey: generateApprovalKey(),
+        ...req.body,
+        createdAt: new Date().toISOString(),
+        status: 'pending'
+    };
+    dataStore.approvals.push(approval);
+    saveData(FILES.approvals, dataStore.approvals);
+
+    // 承認メール送信
+    if (req.body.sendEmail) {
+        await sendApprovalEmail(approval);
+    }
+
+    res.json({ success: true, data: approval });
+});
+
+// 5. サービス状況管理
+app.get('/api/service-status', (req, res) => {
+    res.json({
+        success: true,
+        data: dataStore.serviceStatus
+    });
+});
+
+app.put('/api/service-status', authenticateToken, (req, res) => {
+    dataStore.serviceStatus = {
+        ...dataStore.serviceStatus,
+        ...req.body,
+        lastUpdated: new Date().toISOString()
+    };
+    saveData(FILES.serviceStatus, dataStore.serviceStatus);
+    res.json({ success: true, data: dataStore.serviceStatus });
+});
+
+// 6. 発送スケジュール管理
+app.get('/api/schedule', (req, res) => {
+    res.json({
+        success: true,
+        data: dataStore.schedule
+    });
+});
+
+app.put('/api/schedule', authenticateToken, (req, res) => {
+    dataStore.schedule = {
+        ...req.body,
+        lastUpdated: new Date().toISOString()
+    };
+    saveData(FILES.schedule, dataStore.schedule);
+    res.json({ success: true, data: dataStore.schedule });
+});
+
+// 7. 統計情報
+app.get('/api/statistics', authenticateToken, (req, res) => {
+    const stats = {
+        totalApplications: dataStore.applications.length,
+        pendingApplications: dataStore.applications.filter(a => a.status === 'pending').length,
+        inProgressApplications: dataStore.applications.filter(a => a.status === 'in_progress').length,
+        completedApplications: dataStore.applications.filter(a => a.status === 'completed').length,
+        totalApprovals: dataStore.approvals.length,
+        pendingApprovals: dataStore.approvals.filter(a => a.status === 'pending').length,
+        unreadMessages: dataStore.messages.filter(m => !m.read && m.to === 'admin').length,
+        serviceStatus: dataStore.serviceStatus.services.map(s => ({
+            name: s.name,
+            status: s.status
+        })),
+        nextShipDate: dataStore.schedule.nextShipDate
+    };
+    res.json({ success: true, data: stats });
+});
+
+// 8. 利用者サイト用API（CORS対応）
+app.get('/api/public/service-status', (req, res) => {
+    res.json({
+        success: true,
+        data: {
+            services: dataStore.serviceStatus.services,
+            announcement: dataStore.serviceStatus.announcement
+        }
+    });
+});
+
+app.get('/api/public/schedule', (req, res) => {
+    res.json({
+        success: true,
+        data: {
+            nextShipDate: dataStore.schedule.nextShipDate,
+            estimatedReturnDate: dataStore.schedule.estimatedReturnDate,
+            notes: dataStore.schedule.notes
+        }
+    });
+});
+
+app.get('/api/public/application/:id/progress', (req, res) => {
+    const application = dataStore.applications.find(a => a.id === req.params.id);
+    if (!application) {
+        return res.status(404).json({ error: '申込が見つかりません' });
+    }
+
+    const progress = dataStore.progress.filter(p => p.applicationId === req.params.id);
+    res.json({
+        success: true,
+        data: {
+            application: {
+                id: application.id,
+                status: application.status,
+                createdAt: application.createdAt
+            },
+            progress: progress
+        }
+    });
+});
+
+// メール送信関数
+async function sendMessageEmail(message, toEmail) {
+    const mailOptions = {
+        from: `PSA代行サービス <${process.env.SMTP_USER || 'collection@kanucard.com'}>`,
+        to: toEmail,
+        subject: 'PSA代行サービスからのメッセージ',
+        html: `
+            <div style="max-width: 600px; margin: 0 auto; font-family: sans-serif;">
+                <h2>新しいメッセージがあります</h2>
+                <div style="background: #f5f5f5; padding: 20px; border-radius: 8px;">
+                    <p>${message.message}</p>
+                </div>
+                <p style="margin-top: 20px;">
+                    <a href="https://new-daiko-form.onrender.com/mypage" style="background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+                        マイページで確認
+                    </a>
+                </p>
+            </div>
+        `
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+    } catch (error) {
+        console.error('Email send error:', error);
+    }
+}
+
+async function sendApprovalEmail(approval) {
+    const approvalUrl = `https://new-daiko-form.onrender.com/approval/${approval.approvalKey}`;
+
+    const mailOptions = {
+        from: `PSA代行サービス <${process.env.SMTP_USER || 'collection@kanucard.com'}>`,
+        to: approval.customerEmail,
+        subject: `【PSA代行】買取承認のお願い - ${approval.customerName}様`,
+        html: `
+            <div style="max-width: 800px; margin: 0 auto; font-family: sans-serif;">
+                <h1 style="color: #667eea;">PSA代行 買取承認のお願い</h1>
+                <p>${approval.customerName}様</p>
+                <p>以下のカードの買取価格についてご確認をお願いします。</p>
+                <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <p><strong>承認キー:</strong> ${approval.approvalKey}</p>
+                    <p><strong>総額:</strong> ¥${(approval.totalPrice || 0).toLocaleString()}</p>
+                </div>
+                <p>
+                    <a href="${approvalUrl}" style="display: inline-block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px;">
+                        承認ページを開く
+                    </a>
+                </p>
+            </div>
+        `
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+    } catch (error) {
+        console.error('Approval email send error:', error);
+    }
+}
+
+function generateApprovalKey() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let key = '';
+    for (let i = 0; i < 16; i++) {
+        if (i > 0 && i % 4 === 0) key += '-';
+        key += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return key;
+}
 
 // ファイルアップロード設定
 const storage = multer.diskStorage({
@@ -59,455 +457,32 @@ const storage = multer.diskStorage({
     }
 });
 
-const upload = multer({
-    storage: storage,
-    limits: {
-        fileSize: 10 * 1024 * 1024 // 10MB制限
+const upload = multer({ storage: storage });
+
+// ファイルアップロードエンドポイント
+app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'ファイルがアップロードされていません' });
     }
-});
-
-// メール送信設定
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'sv10210.xserver.jp',
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-        user: process.env.SMTP_USER || 'collection@kanucard.com',
-        pass: process.env.SMTP_PASS
-    }
-});
-
-// データファイルの読み込みと保存
-const REQUESTS_FILE = path.join(DATA_DIR, 'approval_requests.json');
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
-
-function loadData(filePath, defaultData = []) {
-    try {
-        if (fs.existsSync(filePath)) {
-            const data = fs.readFileSync(filePath, 'utf8');
-            return JSON.parse(data);
+    res.json({
+        success: true,
+        file: {
+            filename: req.file.filename,
+            originalname: req.file.originalname,
+            size: req.file.size,
+            path: req.file.path
         }
-    } catch (error) {
-        console.error(`Error loading ${filePath}:`, error);
-    }
-    return defaultData;
-}
-
-function saveData(filePath, data) {
-    try {
-        fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-        // Xserverにバックアップ
-        backupToXserver(filePath);
-    } catch (error) {
-        console.error(`Error saving ${filePath}:`, error);
-    }
-}
-
-// Xserverへのバックアップ
-async function backupToXserver(localPath) {
-    if (!ftpConfig.user || !ftpConfig.password) {
-        console.log('FTP credentials not configured, skipping backup');
-        return;
-    }
-
-    const client = new Client();
-    try {
-        await client.access(ftpConfig);
-        const remotePath = `/kanucard-backup/${path.basename(localPath)}`;
-        await client.ensureDir('/kanucard-backup');
-        await client.uploadFrom(localPath, remotePath);
-        console.log(`Backed up ${localPath} to Xserver`);
-    } catch (error) {
-        console.error('FTP backup error:', error);
-    } finally {
-        client.close();
-    }
-}
-
-// データの初期化
-let approvalRequests = loadData(REQUESTS_FILE, []);
-let users = loadData(USERS_FILE, []);
-
-// デフォルト管理者ユーザーの作成
-async function initializeAdmin() {
-    const adminEmail = process.env.ADMIN_EMAIL || 'collection@kanucard.com';
-    const adminPassword = process.env.ADMIN_PASSWORD || '#collection30';
-
-    const existingAdmin = users.find(u => u.email === adminEmail);
-    if (!existingAdmin) {
-        const hashedPassword = await bcrypt.hash(adminPassword, 10);
-        users.push({
-            id: uuidv4(),
-            email: adminEmail,
-            password: hashedPassword,
-            role: 'admin',
-            createdAt: new Date().toISOString()
-        });
-        saveData(USERS_FILE, users);
-        console.log('Admin user initialized');
-    }
-}
-
-initializeAdmin();
-
-// 認証ミドルウェア（無効化 - 全てのリクエストを通す）
-function authenticateToken(req, res, next) {
-    // 認証をスキップし、ダミーのユーザー情報を設定
-    req.user = {
-        id: 'admin',
-        email: 'collection@kanucard.com',
-        role: 'admin'
-    };
-    next();
-}
-
-// 承認キー生成
-function generateApprovalKey() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let key = '';
-    for (let i = 0; i < 16; i++) {
-        if (i > 0 && i % 4 === 0) key += '-';
-        key += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return key;
-}
-
-// メール送信関数
-async function sendApprovalEmail(requestData) {
-    const {
-        customerName,
-        customerEmail,
-        approvalKey,
-        cards,
-        totalPrice,
-        expiresAt,
-        notes
-    } = requestData;
-
-    const approvalUrl = `${process.env.BASE_URL || 'https://new-daiko-form.onrender.com'}/approval/${approvalKey}`;
-
-    // カード情報のHTML生成
-    const cardsHtml = cards.map((card, index) => `
-        <tr>
-            <td style="padding: 12px; border: 1px solid #ddd;">${index + 1}</td>
-            <td style="padding: 12px; border: 1px solid #ddd;">${card.name}</td>
-            <td style="padding: 12px; border: 1px solid #ddd;">${card.grade || '未設定'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">¥${(card.price || 0).toLocaleString()}</td>
-        </tr>
-    `).join('');
-
-    const htmlContent = `
-        <div style="max-width: 800px; margin: 0 auto; font-family: sans-serif;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-                <h1 style="color: white; margin: 0;">PSA代行 買取承認のお願い</h1>
-            </div>
-
-            <div style="background: white; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
-                <p>お客様名: <strong>${customerName}</strong> 様</p>
-
-                <div style="background: #f0f8ff; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                    <p style="margin: 10px 0;"><strong>承認キー:</strong> <code style="background: #fff; padding: 5px 10px; border: 1px solid #ddd;">${approvalKey}</code></p>
-                    <p style="margin: 10px 0;"><strong>総額:</strong> ¥${totalPrice.toLocaleString()}</p>
-                    <p style="margin: 10px 0;"><strong>有効期限:</strong> ${new Date(expiresAt).toLocaleString('ja-JP')}</p>
-                </div>
-
-                <h3>カード詳細</h3>
-                <table style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background: #f5f5f5;">
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">No.</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">カード名</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">グレード</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right;">買取価格</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${cardsHtml}
-                    </tbody>
-                </table>
-
-                ${notes ? `<div style="background: #fffacd; padding: 15px; border-radius: 8px; margin: 20px 0;"><strong>備考:</strong> ${notes}</div>` : ''}
-
-                <div style="text-align: center; margin: 30px 0;">
-                    <a href="${approvalUrl}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold;">承認ページを開く</a>
-                </div>
-            </div>
-        </div>
-    `;
-
-    const mailOptions = {
-        from: `PSA代行サービス <${process.env.SMTP_USER || 'collection@kanucard.com'}>`,
-        to: customerEmail,
-        subject: `【PSA代行】買取承認のお願い - ${customerName}様`,
-        html: htmlContent
-    };
-
-    return await transporter.sendMail(mailOptions);
-}
-
-// ===== APIエンドポイント =====
-
-// ログイン
-app.post('/api/auth/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-
-        const user = users.find(u => u.email === email);
-        if (!user) {
-            return res.status(401).json({ error: 'メールアドレスまたはパスワードが正しくありません' });
-        }
-
-        const validPassword = await bcrypt.compare(password, user.password);
-        if (!validPassword) {
-            return res.status(401).json({ error: 'メールアドレスまたはパスワードが正しくありません' });
-        }
-
-        const token = jwt.sign(
-            { id: user.id, email: user.email, role: user.role },
-            JWT_SECRET,
-            { expiresIn: '24h' }
-        );
-
-        res.json({
-            success: true,
-            token,
-            user: {
-                id: user.id,
-                email: user.email,
-                role: user.role
-            }
-        });
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ error: 'ログインエラーが発生しました' });
-    }
-});
-
-// 承認申請作成
-app.post('/api/approval-requests', authenticateToken, async (req, res) => {
-    try {
-        const {
-            customerName,
-            customerEmail,
-            cards,
-            totalPrice,
-            expirationHours = 72,
-            notes
-        } = req.body;
-
-        if (!customerName || !customerEmail || !cards || cards.length === 0) {
-            return res.status(400).json({ error: '必須項目が不足しています' });
-        }
-
-        const approvalKey = generateApprovalKey();
-        const expiresAt = new Date(Date.now() + expirationHours * 60 * 60 * 1000);
-
-        const request = {
-            id: uuidv4(),
-            approvalKey,
-            customerName,
-            customerEmail,
-            cards,
-            totalPrice: totalPrice || cards.reduce((sum, card) => sum + (card.price || 0), 0),
-            status: 'pending',
-            createdBy: req.user.email,
-            createdAt: new Date().toISOString(),
-            expiresAt: expiresAt.toISOString(),
-            notes
-        };
-
-        approvalRequests.push(request);
-        saveData(REQUESTS_FILE, approvalRequests);
-
-        // メール送信
-        try {
-            await sendApprovalEmail(request);
-            console.log('Approval email sent to:', customerEmail);
-        } catch (emailError) {
-            console.error('Email send error:', emailError);
-        }
-
-        res.json({
-            success: true,
-            data: request
-        });
-    } catch (error) {
-        console.error('Create approval request error:', error);
-        res.status(500).json({ error: 'サーバーエラーが発生しました' });
-    }
-});
-
-// 承認申請一覧取得
-app.get('/api/approval-requests', authenticateToken, (req, res) => {
-    try {
-        const sortedRequests = approvalRequests.sort((a, b) =>
-            new Date(b.createdAt) - new Date(a.createdAt)
-        );
-
-        res.json({
-            success: true,
-            data: sortedRequests
-        });
-    } catch (error) {
-        console.error('Get approval requests error:', error);
-        res.status(500).json({ error: 'サーバーエラーが発生しました' });
-    }
-});
-
-// 承認申請詳細取得（顧客用）
-app.get('/api/approval/:key', (req, res) => {
-    try {
-        const { key } = req.params;
-        const request = approvalRequests.find(r => r.approvalKey === key);
-
-        if (!request) {
-            return res.status(404).json({ error: '承認申請が見つかりません' });
-        }
-
-        if (new Date(request.expiresAt) < new Date()) {
-            return res.status(400).json({ error: '承認期限が過ぎています' });
-        }
-
-        res.json({
-            success: true,
-            data: {
-                customerName: request.customerName,
-                cards: request.cards,
-                totalPrice: request.totalPrice,
-                expiresAt: request.expiresAt,
-                notes: request.notes,
-                status: request.status
-            }
-        });
-    } catch (error) {
-        console.error('Get approval detail error:', error);
-        res.status(500).json({ error: 'サーバーエラーが発生しました' });
-    }
-});
-
-// 承認結果送信
-app.post('/api/approval/:key/submit', async (req, res) => {
-    try {
-        const { key } = req.params;
-        const { cards, overallStatus, customerComments } = req.body;
-
-        const requestIndex = approvalRequests.findIndex(r => r.approvalKey === key);
-        if (requestIndex === -1) {
-            return res.status(404).json({ error: '承認申請が見つかりません' });
-        }
-
-        approvalRequests[requestIndex].status = overallStatus || 'responded';
-        approvalRequests[requestIndex].respondedAt = new Date().toISOString();
-        approvalRequests[requestIndex].responseCards = cards;
-        approvalRequests[requestIndex].customerComments = customerComments;
-
-        saveData(REQUESTS_FILE, approvalRequests);
-
-        // 管理者に通知メール送信
-        const adminEmail = process.env.ADMIN_EMAIL || 'collection@kanucard.com';
-        const request = approvalRequests[requestIndex];
-
-        const mailOptions = {
-            from: `PSA代行サービス <${process.env.SMTP_USER || 'collection@kanucard.com'}>`,
-            to: adminEmail,
-            subject: `【承認結果】${request.customerName}様からの回答`,
-            html: `
-                <h2>承認結果を受信しました</h2>
-                <p><strong>顧客名:</strong> ${request.customerName}</p>
-                <p><strong>状態:</strong> ${overallStatus}</p>
-                <p><strong>コメント:</strong> ${customerComments || 'なし'}</p>
-                <p>詳細は管理画面でご確認ください。</p>
-            `
-        };
-
-        try {
-            await transporter.sendMail(mailOptions);
-        } catch (emailError) {
-            console.error('Admin notification email error:', emailError);
-        }
-
-        res.json({
-            success: true,
-            message: '承認結果を送信しました'
-        });
-    } catch (error) {
-        console.error('Submit approval response error:', error);
-        res.status(500).json({ error: 'サーバーエラーが発生しました' });
-    }
-});
-
-// ファイルアップロード（Xserver連携）
-app.post('/api/upload', authenticateToken, upload.single('file'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'ファイルがアップロードされていません' });
-        }
-
-        // Xserverにアップロード
-        if (ftpConfig.user && ftpConfig.password) {
-            const client = new Client();
-            try {
-                await client.access(ftpConfig);
-                const remotePath = `/kanucard-files/${req.file.filename}`;
-                await client.ensureDir('/kanucard-files');
-                await client.uploadFrom(req.file.path, remotePath);
-                console.log('File uploaded to Xserver:', remotePath);
-            } catch (ftpError) {
-                console.error('FTP upload error:', ftpError);
-            } finally {
-                client.close();
-            }
-        }
-
-        res.json({
-            success: true,
-            file: {
-                filename: req.file.filename,
-                originalname: req.file.originalname,
-                size: req.file.size,
-                path: req.file.path
-            }
-        });
-    } catch (error) {
-        console.error('File upload error:', error);
-        res.status(500).json({ error: 'ファイルアップロードエラー' });
-    }
-});
-
-// 統計情報取得
-app.get('/api/statistics', authenticateToken, (req, res) => {
-    try {
-        const stats = {
-            totalRequests: approvalRequests.length,
-            pendingRequests: approvalRequests.filter(r => r.status === 'pending').length,
-            approvedRequests: approvalRequests.filter(r => r.status === 'approved').length,
-            rejectedRequests: approvalRequests.filter(r => r.status === 'rejected').length,
-            expiredRequests: approvalRequests.filter(r => new Date(r.expiresAt) < new Date()).length,
-            totalValue: approvalRequests.reduce((sum, r) => sum + (r.totalPrice || 0), 0)
-        };
-
-        res.json({
-            success: true,
-            data: stats
-        });
-    } catch (error) {
-        console.error('Get statistics error:', error);
-        res.status(500).json({ error: 'サーバーエラーが発生しました' });
-    }
+    });
 });
 
 // 静的ファイル配信
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/approval/:key', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'approval.html'));
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 // サーバー起動
 app.listen(PORT, () => {
-    console.log(`PSA Approval System running on port ${PORT}`);
+    console.log(`PSA Admin System running on port ${PORT}`);
     console.log(`Admin Dashboard: http://localhost:${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
