@@ -1,0 +1,38 @@
+{
+  "name": "kanucard-daiko-support",
+  "version": "1.0.0",
+  "description": "PSA代行買取承認システム - 管理者サイト",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "build": "echo 'No build step required'"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "nodemailer": "^6.9.7",
+    "uuid": "^9.0.1",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "axios": "^1.6.2",
+    "ftp": "^0.3.10",
+    "basic-ftp": "^5.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "psa",
+    "approval",
+    "admin",
+    "kanucard"
+  ],
+  "author": "KanuCard",
+  "license": "MIT"
+}

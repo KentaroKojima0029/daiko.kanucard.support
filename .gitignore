@@ -9,7 +9,8 @@ node_modules/
 
 # Data files
 data/
-*.json
+approval_requests.json
+users.json
 
 # Uploads
 uploads/
