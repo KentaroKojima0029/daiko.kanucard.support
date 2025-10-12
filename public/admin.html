@@ -952,6 +952,12 @@
             loadStatistics();
             loadAllData();
             setInterval(loadStatistics, 30000); // 30秒ごとに統計情報を更新
+
+            // 前回表示していたセクションを復元
+            const lastSection = localStorage.getItem('currentSection') || 'dashboard';
+            if (lastSection !== 'dashboard') {
+                showSection(lastSection);
+            }
         });
 
         // データ読み込み
@@ -1506,6 +1512,9 @@
                 item.classList.remove('active');
             });
             event.target.closest('.nav-item').classList.add('active');
+
+            // 現在のセクションをlocalStorageに保存
+            localStorage.setItem('currentSection', sectionName);
 
             // データを更新
             if (sectionName === 'dashboard') {

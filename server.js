@@ -110,6 +110,27 @@ async function backupToXserver(localPath) {
     }
 }
 
+// シードデータの初期化関数
+function initializeSeedData() {
+    const SEED_DIR = './data-seed';
+
+    // アプリケーションデータが空の場合、シードデータをコピー
+    if (!fs.existsSync(FILES.applications) || fs.readFileSync(FILES.applications, 'utf8').trim() === '[]' || fs.readFileSync(FILES.applications, 'utf8').trim() === '') {
+        const seedFile = path.join(SEED_DIR, 'applications.json');
+        if (fs.existsSync(seedFile)) {
+            try {
+                fs.copyFileSync(seedFile, FILES.applications);
+                console.log('✓ Seed data copied from data-seed/applications.json');
+            } catch (error) {
+                console.error('Error copying seed data:', error);
+            }
+        }
+    }
+}
+
+// シードデータの初期化を実行
+initializeSeedData();
+
 // データの初期化
 let dataStore = {
     applications: loadData(FILES.applications, []),

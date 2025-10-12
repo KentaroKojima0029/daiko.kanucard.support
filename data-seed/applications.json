@@ -1,0 +1,42 @@
+[
+  {
+    "id": "app-test-001-2024",
+    "customerName": "山田太郎",
+    "customerEmail": "yamada.taro@example.com",
+    "createdAt": "2024-10-15T10:30:00.000Z",
+    "cards": [
+      {
+        "cardName": "ピカチュウ VMAX SSR",
+        "declaredValue": 50000,
+        "estimatedGradingFee": 8500
+      },
+      {
+        "cardName": "リザードン 1st Edition",
+        "declaredValue": 120000,
+        "estimatedGradingFee": 12000
+      },
+      {
+        "cardName": "カメックス GX HR",
+        "declaredValue": 35000,
+        "estimatedGradingFee": 6500
+      }
+    ],
+    "totalDeclaredValue": 205000,
+    "totalEstimatedGradingFee": 27000,
+    "status": "pending",
+    "currentStatus": "received",
+    "serviceType": "psa-grading",
+    "country": "usa",
+    "planType": "value-bulk",
+    "shippingAddress": {
+      "postalCode": "150-0001",
+      "prefecture": "東京都",
+      "city": "渋谷区",
+      "address1": "神宮前1-2-3",
+      "address2": "サンプルマンション101"
+    },
+    "phoneNumber": "090-1234-5678",
+    "notes": "カードは全て美品です。丁寧に扱っていただけると幸いです。",
+    "updatedAt": "2024-10-15T10:30:00.000Z"
+  }
+]
