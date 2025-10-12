@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PSA代行サービス - 進捗確認</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+        }
+
+        .progress-card {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .plan-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+
+        .plan-info h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .plan-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .plan-detail-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .plan-detail-label {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 5px;
+        }
+
+        .plan-detail-value {
+            font-size: 16px;
+            color: #2c3e50;
+            font-weight: 600;
+        }
+
+        /* プログレスステップ */
+        .progress-steps {
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            margin: 40px 0;
+        }
+
+        .progress-step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+        }
+
+        .step-circle {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #e0e0e0;
+            color: #999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            margin: 0 auto 10px;
+            position: relative;
+            z-index: 2;
+            transition: all 0.3s;
+        }
+
+        .progress-step.completed .step-circle {
+            background: #27ae60;
+            color: white;
+        }
+
+        .progress-step.current .step-circle {
+            background: #f39c12;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(243, 156, 18, 0.7);
+            }
+            50% {
+                transform: scale(1.1);
+                box-shadow: 0 0 0 10px rgba(243, 156, 18, 0);
+            }
+        }
+
+        .step-title {
+            font-size: 14px;
+            color: #2c3e50;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .step-date {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .progress-line {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            width: 100%;
+            height: 3px;
+            background: #e0e0e0;
+            z-index: 1;
+        }
+
+        .progress-line.completed {
+            background: #27ae60;
+        }
+
+        .progress-step:last-child .progress-line {
+            display: none;
+        }
+
+        /* ステップ詳細 */
+        .step-details {
+            margin-top: 40px;
+        }
+
+        .step-detail-card {
+            background: #f8f9fa;
+            border-left: 4px solid #e0e0e0;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .step-detail-card.completed {
+            border-left-color: #27ae60;
+        }
+
+        .step-detail-card.current {
+            border-left-color: #f39c12;
+        }
+
+        .step-detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .step-detail-title {
+            font-size: 18px;
+            color: #2c3e50;
+            font-weight: 600;
+        }
+
+        .step-detail-status {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-current {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-pending {
+            background: #e0e0e0;
+            color: #666;
+        }
+
+        .step-detail-content {
+            color: #555;
+            line-height: 1.6;
+        }
+
+        /* 特殊なステップコンテンツ */
+        .payment-notice {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .card-list {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .card-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .card-item:last-child {
+            border-bottom: none;
+        }
+
+        .fee-breakdown {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .fee-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .fee-row.total {
+            border-bottom: none;
+            border-top: 2px solid #2c3e50;
+            margin-top: 10px;
+            padding-top: 15px;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .buyback-banner {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .buyback-banner h4 {
+            margin-bottom: 10px;
+        }
+
+        .buyback-button {
+            background: white;
+            color: #e74c3c;
+            padding: 10px 30px;
+            border: none;
+            border-radius: 5px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 10px;
+        }
+
+        .tracking-info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .tracking-number {
+            font-family: monospace;
+            font-size: 18px;
+            color: #0c5460;
+            font-weight: bold;
+        }
+
+        /* レスポンシブ */
+        @media (max-width: 768px) {
+            .progress-steps {
+                flex-direction: column;
+            }
+
+            .progress-step {
+                margin-bottom: 30px;
+            }
+
+            .progress-line {
+                display: none;
+            }
+
+            .plan-details {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>PSA代行サービス 進捗確認</h1>
+            <p>お申込みいただいた代行サービスの進捗状況をご確認いただけます</p>
+        </div>
+
+        <div class="progress-card">
+            <div class="plan-info">
+                <h3>プラン情報</h3>
+                <div class="plan-details">
+                    <div class="plan-detail-item">
+                        <span class="plan-detail-label">お客様名</span>
+                        <span class="plan-detail-value" id="customerName">-</span>
+                    </div>
+                    <div class="plan-detail-item">
+                        <span class="plan-detail-label">日付</span>
+                        <span class="plan-detail-value" id="planDate">-</span>
+                    </div>
+                    <div class="plan-detail-item">
+                        <span class="plan-detail-label">鑑定国</span>
+                        <span class="plan-detail-value" id="planCountry">-</span>
+                    </div>
+                    <div class="plan-detail-item">
+                        <span class="plan-detail-label">プラン</span>
+                        <span class="plan-detail-value" id="planType">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="progress-steps" id="progressSteps">
+                <!-- 動的に生成 -->
+            </div>
+
+            <div class="step-details" id="stepDetails">
+                <!-- 動的に生成 -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // URLパラメータから申込IDを取得
+        const urlParams = new URLSearchParams(window.location.search);
+        const applicationId = urlParams.get('id');
+
+        if (!applicationId) {
+            document.querySelector('.container').innerHTML = `
+                <div class="header">
+                    <h1>エラー</h1>
+                    <p>申込IDが指定されていません</p>
+                </div>
+            `;
+        } else {
+            loadProgress();
+        }
+
+        async function loadProgress() {
+            try {
+                const response = await fetch(`/api/public/application/${applicationId}/progress`);
+                const data = await response.json();
+
+                if (data.success) {
+                    displayProgress(data.data);
+                } else {
+                    showError('進捗情報の取得に失敗しました');
+                }
+            } catch (error) {
+                showError('通信エラーが発生しました');
+            }
+        }
+
+        function displayProgress(data) {
+            // プラン情報の表示
+            document.getElementById('customerName').textContent = data.application.customerName || '-';
+            document.getElementById('planDate').textContent = formatDate(data.planInfo?.date) || '-';
+            document.getElementById('planCountry').textContent = getCountryLabel(data.planInfo?.country) || '-';
+            document.getElementById('planType').textContent = getPlanTypeLabel(data.planInfo?.planType) || '-';
+
+            // プログレスステップの生成
+            const stepsContainer = document.getElementById('progressSteps');
+            const stepTitles = [
+                '申込受付',
+                'カード受領・検品',
+                '代行料お支払い',
+                'PSA鑑定中',
+                '鑑定料お支払い',
+                '返送・完了'
+            ];
+
+            let stepsHTML = '';
+            for (let i = 1; i <= 6; i++) {
+                const step = data.steps[`step${i}`];
+                const status = getStepStatus(step);
+
+                stepsHTML += `
+                    <div class="progress-step ${status}">
+                        <div class="step-circle">${i}</div>
+                        <div class="step-title">${stepTitles[i-1]}</div>
+                        <div class="step-date">${step?.date ? formatDate(step.date) : ''}</div>
+                        ${i < 6 ? `<div class="progress-line ${status === 'completed' ? 'completed' : ''}"></div>` : ''}
+                    </div>
+                `;
+            }
+            stepsContainer.innerHTML = stepsHTML;
+
+            // ステップ詳細の生成
+            const detailsContainer = document.getElementById('stepDetails');
+            let detailsHTML = '';
+
+            for (let i = 1; i <= 6; i++) {
+                const step = data.steps[`step${i}`];
+                const status = getStepStatus(step);
+
+                detailsHTML += `
+                    <div class="step-detail-card ${status}">
+                        <div class="step-detail-header">
+                            <div class="step-detail-title">ステップ${i}: ${stepTitles[i-1]}</div>
+                            <div class="step-detail-status status-${status}">${getStatusLabel(status)}</div>
+                        </div>
+                        <div class="step-detail-content">
+                            ${getStepContent(i, step)}
+                        </div>
+                    </div>
+                `;
+            }
+            detailsContainer.innerHTML = detailsHTML;
+        }
+
+        function getStepContent(stepNumber, stepData) {
+            switch (stepNumber) {
+                case 1:
+                    return `<p>お申込みを受け付けました。</p>`;
+
+                case 2:
+                    if (stepData?.status === 'completed') {
+                        return `<p>カードを受領し、検品が完了しました。</p>`;
+                    } else {
+                        return `<p>カードの到着をお待ちしております。</p>`;
+                    }
+
+                case 3:
+                    if (stepData?.status === 'completed') {
+                        return `<p>代行料のお支払いが完了しました。</p>`;
+                    } else {
+                        return `
+                            <div class="payment-notice">
+                                <p>Shopifyから決済メールをお送りしております。</p>
+                                <p>お支払いをお待ちしております。</p>
+                            </div>
+                        `;
+                    }
+
+                case 4:
+                    if (stepData?.cards && stepData.cards.length > 0) {
+                        let cardList = '<div class="card-list"><h4>鑑定中のカード</h4>';
+                        stepData.cards.forEach(card => {
+                            cardList += `
+                                <div class="card-item">
+                                    <span>${card.name}</span>
+                                    <span>${card.quantity}枚</span>
+                                </div>
+                            `;
+                        });
+                        cardList += '</div>';
+                        return cardList;
+                    } else {
+                        return `<p>PSAで鑑定中です。</p>`;
+                    }
+
+                case 5:
+                    if (stepData?.fees) {
+                        let content = `
+                            <div class="fee-breakdown">
+                                <h4>料金明細</h4>
+                                <div class="fee-row">
+                                    <span>鑑定料</span>
+                                    <span>¥${(stepData.fees.grading || 0).toLocaleString()}</span>
+                                </div>
+                                <div class="fee-row">
+                                    <span>輸出入送料</span>
+                                    <span>¥${(stepData.fees.shipping || 0).toLocaleString()}</span>
+                                </div>
+                                <div class="fee-row">
+                                    <span>追加代行料</span>
+                                    <span>¥${(stepData.fees.additional || 0).toLocaleString()}</span>
+                                </div>
+                                <div class="fee-row">
+                                    <span>その他費用</span>
+                                    <span>¥${(stepData.fees.other || 0).toLocaleString()}</span>
+                                </div>
+                                <div class="fee-row total">
+                                    <span>合計</span>
+                                    <span>¥${calculateTotal(stepData.fees).toLocaleString()}</span>
+                                </div>
+                            </div>
+                        `;
+
+                        // 買取オプションの表示
+                        content += `
+                            <div class="buyback-banner">
+                                <h4>カードの買取をご希望ですか？</h4>
+                                <p>鑑定後のカードの買取も承っております</p>
+                                <a href="/buyback?id=${applicationId}" class="buyback-button">買取を申し込む</a>
+                            </div>
+                        `;
+
+                        return content;
+                    } else {
+                        return `<p>鑑定料の計算中です。</p>`;
+                    }
+
+                case 6:
+                    if (stepData?.trackingNumbers && Object.keys(stepData.trackingNumbers).length > 0) {
+                        let trackingHTML = '<div class="tracking-info"><h4>発送情報</h4>';
+                        Object.entries(stepData.trackingNumbers).forEach(([customer, tracking]) => {
+                            trackingHTML += `
+                                <p>${customer}様</p>
+                                <p>追跡番号: <span class="tracking-number">${tracking}</span></p>
+                            `;
+                        });
+                        trackingHTML += '</div>';
+                        return trackingHTML;
+                    } else if (stepData?.status === 'completed') {
+                        return `<p>発送が完了しました。</p>`;
+                    } else {
+                        return `<p>返送準備中です。</p>`;
+                    }
+
+                default:
+                    return '';
+            }
+        }
+
+        function getStepStatus(step) {
+            if (!step) return 'pending';
+            if (step.status === 'completed') return 'completed';
+            if (step.status === 'current' || step.status === 'active') return 'current';
+            return 'pending';
+        }
+
+        function getStatusLabel(status) {
+            const labels = {
+                'completed': '完了',
+                'current': '進行中',
+                'pending': '待機中'
+            };
+            return labels[status] || status;
+        }
+
+        function getCountryLabel(country) {
+            const labels = {
+                'usa': '🇺🇸 アメリカ',
+                'japan': '🇯🇵 日本'
+            };
+            return labels[country] || country;
+        }
+
+        function getPlanTypeLabel(planType) {
+            const labels = {
+                'value-bulk': 'バリューバルク',
+                'economy': 'エコノミー',
+                'standard': 'スタンダード',
+                'express': 'エクスプレス'
+            };
+            return labels[planType] || planType;
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('ja-JP', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            });
+        }
+
+        function calculateTotal(fees) {
+            return (fees.grading || 0) + (fees.shipping || 0) +
+                   (fees.additional || 0) + (fees.other || 0);
+        }
+
+        function showError(message) {
+            document.querySelector('.container').innerHTML = `
+                <div class="header">
+                    <h1>エラー</h1>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+
+        // 5秒ごとに自動更新
+        setInterval(loadProgress, 5000);
+    </script>
+</body>
+</html>

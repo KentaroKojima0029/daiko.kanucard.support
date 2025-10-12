@@ -186,7 +186,7 @@ app.delete('/api/applications/:id', authenticateToken, (req, res) => {
     res.json({ success: true });
 });
 
-// 2. 進捗状況管理
+// 2. 進捗状況管理（拡張版）
 app.get('/api/progress', authenticateToken, (req, res) => {
     res.json({
         success: true,
@@ -194,26 +194,83 @@ app.get('/api/progress', authenticateToken, (req, res) => {
     });
 });
 
+app.get('/api/progress/:applicationId', authenticateToken, (req, res) => {
+    const progress = dataStore.progress.find(p => p.applicationId === req.params.applicationId);
+    if (!progress) {
+        // 新規作成
+        const newProgress = {
+            id: uuidv4(),
+            applicationId: req.params.applicationId,
+            steps: {
+                step1: { status: 'completed', date: new Date().toISOString(), notes: '申込受付完了' },
+                step2: { status: 'pending', date: null, notes: '' },
+                step3: { status: 'pending', date: null, notes: '' },
+                step4: { status: 'pending', date: null, notes: '', cards: [] },
+                step5: { status: 'pending', date: null, notes: '', fees: {} },
+                step6: { status: 'pending', date: null, notes: '', trackingNumbers: {} }
+            },
+            createdAt: new Date().toISOString()
+        };
+        dataStore.progress.push(newProgress);
+        saveData(FILES.progress, dataStore.progress);
+        return res.json({ success: true, data: newProgress });
+    }
+    res.json({ success: true, data: progress });
+});
+
 app.post('/api/progress', authenticateToken, (req, res) => {
     const progress = {
         id: uuidv4(),
         applicationId: req.body.applicationId,
-        status: req.body.status,
-        description: req.body.description,
+        planDate: req.body.planDate,
+        country: req.body.country,
+        planType: req.body.planType,
+        customers: req.body.customers || [],
+        steps: {
+            step1: { status: 'completed', date: new Date().toISOString(), notes: '申込受付完了' },
+            step2: { status: 'pending', date: null, notes: '' },
+            step3: { status: 'pending', date: null, notes: '' },
+            step4: { status: 'pending', date: null, notes: '', cards: [] },
+            step5: { status: 'pending', date: null, notes: '', fees: {} },
+            step6: { status: 'pending', date: null, notes: '', trackingNumbers: {} }
+        },
         createdAt: new Date().toISOString(),
         updatedBy: req.user.email
     };
-    dataStore.progress.push(progress);
-    saveData(FILES.progress, dataStore.progress);
 
-    // 申込のステータスも更新
-    const appIndex = dataStore.applications.findIndex(a => a.id === req.body.applicationId);
-    if (appIndex !== -1) {
-        dataStore.applications[appIndex].currentStatus = req.body.status;
-        saveData(FILES.applications, dataStore.applications);
+    // 既存のエントリを確認
+    const existingIndex = dataStore.progress.findIndex(p => p.applicationId === req.body.applicationId);
+    if (existingIndex !== -1) {
+        dataStore.progress[existingIndex] = progress;
+    } else {
+        dataStore.progress.push(progress);
     }
 
+    saveData(FILES.progress, dataStore.progress);
     res.json({ success: true, data: progress });
+});
+
+app.put('/api/progress/:applicationId/step/:stepId', authenticateToken, (req, res) => {
+    const progressIndex = dataStore.progress.findIndex(p => p.applicationId === req.params.applicationId);
+    if (progressIndex === -1) {
+        return res.status(404).json({ error: '進捗情報が見つかりません' });
+    }
+
+    const stepId = req.params.stepId;
+    if (!dataStore.progress[progressIndex].steps[stepId]) {
+        return res.status(400).json({ error: '無効なステップIDです' });
+    }
+
+    // ステップ情報を更新
+    dataStore.progress[progressIndex].steps[stepId] = {
+        ...dataStore.progress[progressIndex].steps[stepId],
+        ...req.body,
+        updatedAt: new Date().toISOString(),
+        updatedBy: req.user.email
+    };
+
+    saveData(FILES.progress, dataStore.progress);
+    res.json({ success: true, data: dataStore.progress[progressIndex] });
 });
 
 // 3. メッセージ管理
@@ -365,16 +422,43 @@ app.get('/api/public/application/:id/progress', (req, res) => {
         return res.status(404).json({ error: '申込が見つかりません' });
     }
 
-    const progress = dataStore.progress.filter(p => p.applicationId === req.params.id);
+    const progress = dataStore.progress.find(p => p.applicationId === req.params.id);
+    if (!progress) {
+        return res.json({
+            success: true,
+            data: {
+                application: {
+                    id: application.id,
+                    status: application.status,
+                    createdAt: application.createdAt
+                },
+                steps: {
+                    step1: { status: 'completed', date: application.createdAt, notes: '申込受付完了' },
+                    step2: { status: 'pending', date: null, notes: '' },
+                    step3: { status: 'pending', date: null, notes: '' },
+                    step4: { status: 'pending', date: null, notes: '' },
+                    step5: { status: 'pending', date: null, notes: '' },
+                    step6: { status: 'pending', date: null, notes: '' }
+                }
+            }
+        });
+    }
+
     res.json({
         success: true,
         data: {
             application: {
                 id: application.id,
                 status: application.status,
-                createdAt: application.createdAt
+                createdAt: application.createdAt,
+                customerName: application.customerName
             },
-            progress: progress
+            planInfo: {
+                date: progress.planDate,
+                country: progress.country,
+                planType: progress.planType
+            },
+            steps: progress.steps
         }
     });
 });

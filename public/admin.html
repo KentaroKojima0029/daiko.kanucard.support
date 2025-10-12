@@ -430,6 +430,132 @@
                 opacity: 0;
             }
         }
+
+        /* 進捗ステップUI */
+        .progress-steps {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 30px 20px;
+        }
+
+        .progress-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            position: relative;
+            flex: 0 0 auto;
+        }
+
+        .step-number {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #e0e0e0;
+            color: #999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+            transition: all 0.3s;
+            z-index: 2;
+        }
+
+        .progress-step.active .step-number {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .progress-step.completed .step-number {
+            background: #27ae60;
+            color: white;
+        }
+
+        .progress-step.current .step-number {
+            background: #f39c12;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.1);
+            }
+        }
+
+        .step-label {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+            max-width: 100px;
+        }
+
+        .progress-line {
+            flex: 1;
+            height: 3px;
+            background: #e0e0e0;
+            margin: 0 10px;
+            position: relative;
+        }
+
+        .progress-line.completed {
+            background: #27ae60;
+        }
+
+        /* ステップ詳細フォーム */
+        .step-form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .fee-input-group {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .card-list-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tracking-input {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin: 10px 0;
+        }
+
+        .payment-notice {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .buyback-link {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            margin: 15px 0;
+        }
     </style>
 </head>
 <body>
@@ -572,34 +698,86 @@
             <div id="progress-section" class="section" style="display: none;">
                 <div class="content-header">
                     <h2 class="content-title">進捗状況管理</h2>
+                    <button class="btn btn-primary" onclick="showProgressPlanForm()">新規プラン作成</button>
                 </div>
 
+                <!-- プラン選択 -->
                 <div class="card">
-                    <div class="form-group">
-                        <label>申込選択</label>
-                        <select id="progressApplicationSelect" onchange="loadProgressForApplication()">
-                            <option value="">申込を選択してください</option>
-                        </select>
+                    <div class="card-title">代行プラン管理</div>
+                    <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap: 15px;">
+                        <div class="form-group">
+                            <label>日付</label>
+                            <input type="date" id="progressPlanDate" onchange="filterProgressPlans()">
+                        </div>
+                        <div class="form-group">
+                            <label>鑑定の国</label>
+                            <select id="progressCountry" onchange="filterProgressPlans()">
+                                <option value="">全て</option>
+                                <option value="usa">🇺🇸 アメリカ</option>
+                                <option value="japan">🇯🇵 日本</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>プラン</label>
+                            <select id="progressPlanType" onchange="filterProgressPlans()">
+                                <option value="">全て</option>
+                                <option value="value-bulk">バリューバルク</option>
+                                <option value="economy">エコノミー</option>
+                                <option value="standard">スタンダード</option>
+                                <option value="express">エクスプレス</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>顧客選択</label>
+                            <select id="progressCustomerSelect" onchange="loadProgressForCustomer()">
+                                <option value="">顧客を選択</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 6ステップ進捗管理 -->
+                <div id="progressStepsContainer" style="display: none;">
+                    <!-- ステップインジケーター -->
+                    <div class="card">
+                        <div class="progress-steps">
+                            <div class="progress-step" id="step1" onclick="showStepDetails(1)">
+                                <div class="step-number">1</div>
+                                <div class="step-label">申込受付</div>
+                            </div>
+                            <div class="progress-line"></div>
+                            <div class="progress-step" id="step2" onclick="showStepDetails(2)">
+                                <div class="step-number">2</div>
+                                <div class="step-label">カード受領・検品</div>
+                            </div>
+                            <div class="progress-line"></div>
+                            <div class="progress-step" id="step3" onclick="showStepDetails(3)">
+                                <div class="step-number">3</div>
+                                <div class="step-label">代行料お支払い</div>
+                            </div>
+                            <div class="progress-line"></div>
+                            <div class="progress-step" id="step4" onclick="showStepDetails(4)">
+                                <div class="step-number">4</div>
+                                <div class="step-label">PSA鑑定中</div>
+                            </div>
+                            <div class="progress-line"></div>
+                            <div class="progress-step" id="step5" onclick="showStepDetails(5)">
+                                <div class="step-number">5</div>
+                                <div class="step-label">鑑定料お支払い</div>
+                            </div>
+                            <div class="progress-line"></div>
+                            <div class="progress-step" id="step6" onclick="showStepDetails(6)">
+                                <div class="step-number">6</div>
+                                <div class="step-label">返送・完了</div>
+                            </div>
+                        </div>
                     </div>
 
-                    <div id="progressTimeline"></div>
-
-                    <div class="form-group" style="margin-top: 20px;">
-                        <label>ステータス更新</label>
-                        <select id="progressStatus">
-                            <option value="received">受付済み</option>
-                            <option value="preparing">準備中</option>
-                            <option value="shipped">発送済み</option>
-                            <option value="grading">鑑定中</option>
-                            <option value="returned">返送中</option>
-                            <option value="completed">完了</option>
-                        </select>
+                    <!-- 各ステップの詳細入力 -->
+                    <div class="card" id="stepDetailsCard">
+                        <div class="card-title" id="stepDetailsTitle">ステップ詳細</div>
+                        <div id="stepDetailsContent"></div>
                     </div>
-                    <div class="form-group">
-                        <label>説明</label>
-                        <textarea id="progressDescription"></textarea>
-                    </div>
-                    <button class="btn btn-primary" onclick="addProgress()">進捗を更新</button>
                 </div>
             </div>
 
@@ -821,9 +999,256 @@
                 const data = await response.json();
                 if (data.success) {
                     currentData.progress = data.data;
+                    updateProgressPlans();
                 }
             } catch (error) {
                 console.error('Failed to load progress:', error);
+            }
+        }
+
+        // 進捗プランのフィルタリングと表示
+        function updateProgressPlans() {
+            const customerSelect = document.getElementById('progressCustomerSelect');
+            const applications = currentData.applications;
+
+            customerSelect.innerHTML = '<option value="">顧客を選択</option>';
+            applications.forEach(app => {
+                customerSelect.innerHTML += `
+                    <option value="${app.id}">${app.customerName} - ${app.id.substring(0, 8)}</option>
+                `;
+            });
+        }
+
+        function filterProgressPlans() {
+            const date = document.getElementById('progressPlanDate').value;
+            const country = document.getElementById('progressCountry').value;
+            const planType = document.getElementById('progressPlanType').value;
+
+            // フィルタリング処理
+            updateProgressPlans();
+        }
+
+        async function loadProgressForCustomer() {
+            const applicationId = document.getElementById('progressCustomerSelect').value;
+            if (!applicationId) {
+                document.getElementById('progressStepsContainer').style.display = 'none';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/progress/${applicationId}`);
+                const data = await response.json();
+                if (data.success) {
+                    currentData.currentProgress = data.data;
+                    displayProgressSteps(data.data);
+                    document.getElementById('progressStepsContainer').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Failed to load progress:', error);
+            }
+        }
+
+        function displayProgressSteps(progress) {
+            if (!progress || !progress.steps) return;
+
+            // 各ステップの状態を更新
+            for (let i = 1; i <= 6; i++) {
+                const step = document.getElementById(`step${i}`);
+                const stepData = progress.steps[`step${i}`];
+
+                if (stepData) {
+                    step.className = 'progress-step';
+                    if (stepData.status === 'completed') {
+                        step.classList.add('completed');
+                    } else if (stepData.status === 'current') {
+                        step.classList.add('current');
+                    } else if (stepData.status === 'active') {
+                        step.classList.add('active');
+                    }
+                }
+            }
+
+            // 進捗ラインの更新
+            const lines = document.querySelectorAll('.progress-line');
+            for (let i = 0; i < lines.length; i++) {
+                const stepData = progress.steps[`step${i + 1}`];
+                if (stepData && stepData.status === 'completed') {
+                    lines[i].classList.add('completed');
+                } else {
+                    lines[i].classList.remove('completed');
+                }
+            }
+        }
+
+        let currentStepNumber = 1;
+        function showStepDetails(stepNumber) {
+            currentStepNumber = stepNumber;
+            const stepDetailsContent = document.getElementById('stepDetailsContent');
+            const stepDetailsTitle = document.getElementById('stepDetailsTitle');
+
+            const stepTitles = {
+                1: '1. 申込受付',
+                2: '2. カード受領・検品',
+                3: '3. 代行料のお支払い',
+                4: '4. PSA鑑定中',
+                5: '5. 鑑定料お支払い',
+                6: '6. 返送・完了'
+            };
+
+            stepDetailsTitle.textContent = stepTitles[stepNumber];
+
+            const progress = currentData.currentProgress;
+            const stepData = progress?.steps[`step${stepNumber}`] || {};
+
+            switch (stepNumber) {
+                case 1:
+                    stepDetailsContent.innerHTML = `
+                        <p>申込受付は完了しています。</p>
+                        <div class="form-group">
+                            <label>受付日時</label>
+                            <input type="datetime-local" value="${stepData.date || ''}" readonly class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label>備考</label>
+                            <textarea class="form-control" readonly>${stepData.notes || '申込受付完了'}</textarea>
+                        </div>
+                    `;
+                    break;
+
+                case 2:
+                    stepDetailsContent.innerHTML = `
+                        <p>カード受領・検品について</p>
+                        <div class="form-group">
+                            <label>ステータス</label>
+                            <select id="step2Status" class="form-control">
+                                <option value="pending">未受領</option>
+                                <option value="completed">受領完了</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>受領日</label>
+                            <input type="date" id="step2Date" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label>備考</label>
+                            <textarea id="step2Notes" class="form-control"></textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="updateStep(2)">更新</button>
+                    `;
+                    break;
+
+                case 3:
+                    stepDetailsContent.innerHTML = `
+                        <div class="payment-notice">
+                            <h4>代行料のお支払い待ち</h4>
+                            <p>Shopifyから決済メールを送るのでお待ちください。</p>
+                        </div>
+                        <div class="form-group">
+                            <label>支払いステータス</label>
+                            <select id="step3Status" class="form-control">
+                                <option value="pending">支払い待ち</option>
+                                <option value="completed">支払い完了</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Shopify決済リンク</label>
+                            <input type="text" id="step3PaymentLink" class="form-control" placeholder="https://...">
+                        </div>
+                        <button class="btn btn-primary" onclick="updateStep(3)">更新</button>
+                        <button class="btn btn-warning" onclick="sendPaymentReminder(3)">決済リマインダー送信</button>
+                    `;
+                    break;
+
+                case 4:
+                    stepDetailsContent.innerHTML = `
+                        <h4>PSA鑑定中 - カード情報管理</h4>
+                        <div id="cardListContainer">
+                            ${(stepData.cards || []).map((card, index) => `
+                                <div class="card-list-item">
+                                    <div>
+                                        <strong>${card.name}</strong>
+                                        <span class="text-muted"> - ${card.quantity}枚</span>
+                                    </div>
+                                    <button class="btn btn-sm btn-danger" onclick="removeCard(${index})">削除</button>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="step-form-grid">
+                            <div class="form-group">
+                                <label>カード名</label>
+                                <input type="text" id="cardName" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label>枚数</label>
+                                <input type="number" id="cardQuantity" class="form-control" value="1">
+                            </div>
+                        </div>
+                        <button class="btn btn-success" onclick="addCard()">カード追加</button>
+                        <button class="btn btn-primary" onclick="updateStep(4)">更新</button>
+                    `;
+                    break;
+
+                case 5:
+                    stepDetailsContent.innerHTML = `
+                        <h4>鑑定料お支払い設定</h4>
+                        <div class="fee-input-group">
+                            <div class="form-group">
+                                <label>鑑定料</label>
+                                <input type="number" id="gradingFee" class="form-control" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label>輸出入送料</label>
+                                <input type="number" id="shippingFee" class="form-control" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label>追加代行料</label>
+                                <input type="number" id="additionalFee" class="form-control" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label>その他費用</label>
+                                <input type="number" id="otherFee" class="form-control" placeholder="0">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>合計金額</label>
+                            <input type="number" id="totalFee" class="form-control" readonly>
+                        </div>
+                        <div class="buyback-link" onclick="showBuybackOption()">
+                            🛒 買取希望者向けページへの案内を追加
+                        </div>
+                        <button class="btn btn-primary" onclick="updateStep(5)">更新</button>
+                        <button class="btn btn-warning" onclick="sendPaymentRequest(5)">支払い請求送信</button>
+                    `;
+
+                    // 合計金額の自動計算
+                    ['gradingFee', 'shippingFee', 'additionalFee', 'otherFee'].forEach(id => {
+                        document.getElementById(id).addEventListener('input', calculateTotalFee);
+                    });
+                    break;
+
+                case 6:
+                    stepDetailsContent.innerHTML = `
+                        <h4>返送・完了管理</h4>
+                        <div id="trackingNumbersContainer">
+                            ${Object.entries(stepData.trackingNumbers || {}).map(([customer, tracking]) => `
+                                <div class="tracking-input">
+                                    <label>${customer}</label>
+                                    <input type="text" value="${tracking}" class="form-control" data-customer="${customer}">
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="form-group">
+                            <label>新規追跡番号</label>
+                            <div class="step-form-grid">
+                                <input type="text" id="trackingCustomer" class="form-control" placeholder="顧客名">
+                                <input type="text" id="trackingNumber" class="form-control" placeholder="追跡番号">
+                            </div>
+                        </div>
+                        <button class="btn btn-success" onclick="addTrackingNumber()">追跡番号追加</button>
+                        <button class="btn btn-primary" onclick="updateStep(6)">更新</button>
+                        <button class="btn btn-info" onclick="sendShippingNotification(6)">発送通知送信</button>
+                    `;
+                    break;
             }
         }
 
@@ -1192,59 +1617,272 @@
             }
         }
 
-        async function addProgress() {
-            const applicationId = document.getElementById('progressApplicationSelect').value;
+        // ステップ更新関数
+        async function updateStep(stepNumber) {
+            const applicationId = document.getElementById('progressCustomerSelect').value;
             if (!applicationId) {
-                showNotification('申込を選択してください', 'warning');
+                showNotification('顧客を選択してください', 'warning');
                 return;
             }
 
-            const progressData = {
-                applicationId: applicationId,
-                status: document.getElementById('progressStatus').value,
-                description: document.getElementById('progressDescription').value
-            };
+            const stepData = {};
+            switch (stepNumber) {
+                case 2:
+                    stepData.status = document.getElementById('step2Status').value;
+                    stepData.date = document.getElementById('step2Date').value;
+                    stepData.notes = document.getElementById('step2Notes').value;
+                    break;
+                case 3:
+                    stepData.status = document.getElementById('step3Status').value;
+                    stepData.paymentLink = document.getElementById('step3PaymentLink').value;
+                    break;
+                case 4:
+                    const progress = currentData.currentProgress;
+                    stepData.cards = progress.steps.step4.cards || [];
+                    stepData.status = 'current';
+                    break;
+                case 5:
+                    stepData.fees = {
+                        grading: parseFloat(document.getElementById('gradingFee').value) || 0,
+                        shipping: parseFloat(document.getElementById('shippingFee').value) || 0,
+                        additional: parseFloat(document.getElementById('additionalFee').value) || 0,
+                        other: parseFloat(document.getElementById('otherFee').value) || 0
+                    };
+                    stepData.status = 'current';
+                    break;
+                case 6:
+                    const trackingNumbers = {};
+                    document.querySelectorAll('#trackingNumbersContainer input').forEach(input => {
+                        if (input.dataset.customer) {
+                            trackingNumbers[input.dataset.customer] = input.value;
+                        }
+                    });
+                    stepData.trackingNumbers = trackingNumbers;
+                    stepData.status = 'current';
+                    break;
+            }
 
             try {
-                const response = await fetch('/api/progress', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(progressData)
+                const response = await fetch(`/api/progress/${applicationId}/step/step${stepNumber}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(stepData)
                 });
 
                 const data = await response.json();
                 if (data.success) {
-                    showNotification('進捗を更新しました', 'success');
-                    document.getElementById('progressDescription').value = '';
-                    loadProgress();
-                    loadApplications();
+                    showNotification(`ステップ${stepNumber}を更新しました`, 'success');
+                    loadProgressForCustomer();
                 }
             } catch (error) {
-                showNotification('エラーが発生しました', 'error');
+                showNotification('更新に失敗しました', 'error');
             }
         }
 
-        function loadProgressForApplication() {
-            const applicationId = document.getElementById('progressApplicationSelect').value;
-            if (!applicationId) {
-                document.getElementById('progressTimeline').innerHTML = '';
+        // カード管理関数
+        function addCard() {
+            const cardName = document.getElementById('cardName').value;
+            const cardQuantity = parseInt(document.getElementById('cardQuantity').value) || 1;
+
+            if (!cardName) {
+                showNotification('カード名を入力してください', 'warning');
                 return;
             }
 
-            const progress = currentData.progress.filter(p => p.applicationId === applicationId);
-            document.getElementById('progressTimeline').innerHTML =
-                progress.length > 0 ?
-                progress.map(p => `
-                    <div style="border-left: 3px solid #667eea; padding-left: 20px; margin: 20px 0;">
-                        <div style="font-weight: bold;">${getStatusLabel(p.status)}</div>
-                        <div style="color: #666; font-size: 12px;">${new Date(p.createdAt).toLocaleString('ja-JP')}</div>
-                        <div style="margin-top: 5px;">${p.description}</div>
-                    </div>
-                `).join('') :
-                '<p style="color: #999;">まだ進捗情報がありません</p>';
+            const progress = currentData.currentProgress;
+            if (!progress.steps.step4.cards) {
+                progress.steps.step4.cards = [];
+            }
+
+            progress.steps.step4.cards.push({ name: cardName, quantity: cardQuantity });
+
+            document.getElementById('cardName').value = '';
+            document.getElementById('cardQuantity').value = '1';
+
+            showStepDetails(4);
+            updateStep(4);
         }
+
+        function removeCard(index) {
+            const progress = currentData.currentProgress;
+            progress.steps.step4.cards.splice(index, 1);
+            showStepDetails(4);
+            updateStep(4);
+        }
+
+        // 合計金額計算
+        function calculateTotalFee() {
+            const grading = parseFloat(document.getElementById('gradingFee').value) || 0;
+            const shipping = parseFloat(document.getElementById('shippingFee').value) || 0;
+            const additional = parseFloat(document.getElementById('additionalFee').value) || 0;
+            const other = parseFloat(document.getElementById('otherFee').value) || 0;
+
+            const total = grading + shipping + additional + other;
+            document.getElementById('totalFee').value = total;
+        }
+
+        // 追跡番号管理
+        function addTrackingNumber() {
+            const customer = document.getElementById('trackingCustomer').value;
+            const tracking = document.getElementById('trackingNumber').value;
+
+            if (!customer || !tracking) {
+                showNotification('顧客名と追跡番号を入力してください', 'warning');
+                return;
+            }
+
+            const container = document.getElementById('trackingNumbersContainer');
+            const newInput = document.createElement('div');
+            newInput.className = 'tracking-input';
+            newInput.innerHTML = `
+                <label>${customer}</label>
+                <input type="text" value="${tracking}" class="form-control" data-customer="${customer}">
+            `;
+            container.appendChild(newInput);
+
+            document.getElementById('trackingCustomer').value = '';
+            document.getElementById('trackingNumber').value = '';
+        }
+
+        // 支払いリマインダー送信
+        async function sendPaymentReminder(stepNumber) {
+            const applicationId = document.getElementById('progressCustomerSelect').value;
+            if (!applicationId) {
+                showNotification('顧客を選択してください', 'warning');
+                return;
+            }
+
+            showNotification('決済リマインダーを送信しました', 'success');
+        }
+
+        // 支払い請求送信
+        async function sendPaymentRequest(stepNumber) {
+            const applicationId = document.getElementById('progressCustomerSelect').value;
+            if (!applicationId) {
+                showNotification('顧客を選択してください', 'warning');
+                return;
+            }
+
+            showNotification('支払い請求を送信しました', 'success');
+        }
+
+        // 発送通知送信
+        async function sendShippingNotification(stepNumber) {
+            const applicationId = document.getElementById('progressCustomerSelect').value;
+            if (!applicationId) {
+                showNotification('顧客を選択してください', 'warning');
+                return;
+            }
+
+            showNotification('発送通知を送信しました', 'success');
+        }
+
+        // 買取オプション表示
+        function showBuybackOption() {
+            showModal('買取希望者向け案内', `
+                <div class="buyback-info">
+                    <h4>買取希望者向けページへの導線</h4>
+                    <p>このお客様に買取オプションをご案内します。</p>
+                    <div class="form-group">
+                        <label>買取承認URL</label>
+                        <input type="text" id="buybackUrl" class="form-control" value="https://new-daiko-form.onrender.com/buyback" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>メッセージ</label>
+                        <textarea id="buybackMessage" class="form-control" rows="4">PSA鑑定後のカードの買取をご希望の場合は、以下のリンクからお申し込みください。</textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="sendBuybackInvitation()">案内メール送信</button>
+                    <button class="btn" onclick="closeModal()">キャンセル</button>
+                </div>
+            `);
+        }
+
+        async function sendBuybackInvitation() {
+            const applicationId = document.getElementById('progressCustomerSelect').value;
+            const message = document.getElementById('buybackMessage').value;
+
+            showNotification('買取案内を送信しました', 'success');
+            closeModal();
+        }
+
+        // 新規プラン作成フォーム
+        function showProgressPlanForm() {
+            showModal('新規代行プラン作成', `
+                <div class="form-group">
+                    <label>日付</label>
+                    <input type="date" id="newPlanDate" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>鑑定の国</label>
+                    <select id="newPlanCountry" class="form-control">
+                        <option value="usa">🇺🇸 アメリカ</option>
+                        <option value="japan">🇯🇵 日本</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>プランタイプ</label>
+                    <select id="newPlanType" class="form-control">
+                        <option value="value-bulk">バリューバルク</option>
+                        <option value="economy">エコノミー</option>
+                        <option value="standard">スタンダード</option>
+                        <option value="express">エクスプレス</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>対象顧客</label>
+                    <select id="newPlanCustomers" class="form-control" multiple size="5">
+                        ${currentData.applications.map(app =>
+                            `<option value="${app.id}">${app.customerName}</option>`
+                        ).join('')}
+                    </select>
+                    <small>複数選択可（Ctrlキーを押しながらクリック）</small>
+                </div>
+                <button class="btn btn-primary" onclick="createProgressPlan()">作成</button>
+                <button class="btn" onclick="closeModal()">キャンセル</button>
+            `);
+        }
+
+        async function createProgressPlan() {
+            const planDate = document.getElementById('newPlanDate').value;
+            const country = document.getElementById('newPlanCountry').value;
+            const planType = document.getElementById('newPlanType').value;
+            const selectedOptions = document.getElementById('newPlanCustomers').selectedOptions;
+            const customers = Array.from(selectedOptions).map(opt => opt.value);
+
+            if (!planDate || customers.length === 0) {
+                showNotification('日付と顧客を選択してください', 'warning');
+                return;
+            }
+
+            // 各顧客に対して進捗を作成
+            for (const customerId of customers) {
+                try {
+                    const response = await fetch('/api/progress', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            applicationId: customerId,
+                            planDate: planDate,
+                            country: country,
+                            planType: planType,
+                            customers: customers
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (!data.success) {
+                        console.error('Failed to create progress for', customerId);
+                    }
+                } catch (error) {
+                    console.error('Error creating progress:', error);
+                }
+            }
+
+            showNotification('代行プランを作成しました', 'success');
+            closeModal();
+            loadProgress();
+        }
+
 
         // モーダルフォーム表示関数
         function showApplicationForm() {
