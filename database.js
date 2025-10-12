@@ -176,6 +176,114 @@ function initializeDatabase() {
         )
     `);
 
+    // 認証コードテーブル（SMS認証用）
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS verification_codes (
+            id TEXT PRIMARY KEY,
+            phone_number TEXT NOT NULL,
+            code TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            verified INTEGER DEFAULT 0,
+            attempts INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+    `);
+
+    // セッションテーブル
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            token TEXT NOT NULL UNIQUE,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
+
+    // お問い合わせテーブル
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS contacts (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            message TEXT NOT NULL,
+            status TEXT DEFAULT 'new',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    `);
+
+    // 決済情報テーブル
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS payments (
+            id TEXT PRIMARY KEY,
+            request_id TEXT NOT NULL,
+            payment_type TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            status TEXT DEFAULT 'pending',
+            payment_method TEXT,
+            payment_date TEXT,
+            receipt_url TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (request_id) REFERENCES psa_requests(id) ON DELETE CASCADE
+        )
+    `);
+
+    // 通知履歴テーブル
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS notifications (
+            id TEXT PRIMARY KEY,
+            request_id TEXT NOT NULL,
+            user_id TEXT,
+            notification_type TEXT NOT NULL,
+            channel TEXT NOT NULL,
+            recipient TEXT NOT NULL,
+            subject TEXT,
+            message TEXT NOT NULL,
+            sent_at TEXT,
+            status TEXT DEFAULT 'pending',
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (request_id) REFERENCES psa_requests(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    `);
+
+    // 買取依頼テーブル
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS kaitori_requests (
+            id TEXT PRIMARY KEY,
+            token TEXT NOT NULL UNIQUE,
+            card_name TEXT NOT NULL,
+            card_condition TEXT,
+            card_image_url TEXT,
+            assessment_price INTEGER,
+            assessment_comment TEXT,
+            assessor_name TEXT,
+            assessment_date TEXT,
+            customer_name TEXT NOT NULL,
+            customer_email TEXT NOT NULL,
+            customer_phone TEXT,
+            status TEXT DEFAULT 'pending',
+            response_type TEXT,
+            response_date TEXT,
+            bank_name TEXT,
+            bank_branch TEXT,
+            account_number TEXT,
+            account_holder TEXT,
+            return_method TEXT,
+            valid_until TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    `);
+
     // インデックスの作成（パフォーマンス最適化）
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_psa_requests_user_id ON psa_requests(user_id);
@@ -187,6 +295,14 @@ function initializeDatabase() {
         CREATE INDEX IF NOT EXISTS idx_messages_is_read ON messages(is_read);
         CREATE INDEX IF NOT EXISTS idx_admin_logs_timestamp ON admin_logs(timestamp);
         CREATE INDEX IF NOT EXISTS idx_approvals_approval_key ON approvals(approval_key);
+        CREATE INDEX IF NOT EXISTS idx_verification_codes_phone ON verification_codes(phone_number);
+        CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+        CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_contacts_user_id ON contacts(user_id);
+        CREATE INDEX IF NOT EXISTS idx_payments_request_id ON payments(request_id);
+        CREATE INDEX IF NOT EXISTS idx_notifications_request_id ON notifications(request_id);
+        CREATE INDEX IF NOT EXISTS idx_notifications_status ON notifications(status);
+        CREATE INDEX IF NOT EXISTS idx_kaitori_token ON kaitori_requests(token);
     `);
 
     // 初期データの挿入（サービス状況）
@@ -358,6 +474,105 @@ const queries = {
         getByCountry: db.prepare('SELECT * FROM shipping_schedule WHERE country = ?'),
         getAll: db.prepare('SELECT * FROM shipping_schedule'),
         update: db.prepare('UPDATE shipping_schedule SET next_ship_date = ?, notes = ?, last_updated = ? WHERE country = ?')
+    },
+
+    // 認証コード関連
+    verificationCodes: {
+        create: db.prepare(`
+            INSERT INTO verification_codes (id, phone_number, code, expires_at, verified, attempts, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `),
+        findLatestByPhone: db.prepare(`
+            SELECT * FROM verification_codes
+            WHERE phone_number = ? AND verified = 0 AND expires_at > ?
+            ORDER BY created_at DESC LIMIT 1
+        `),
+        markAsVerified: db.prepare('UPDATE verification_codes SET verified = 1 WHERE id = ?'),
+        incrementAttempts: db.prepare('UPDATE verification_codes SET attempts = attempts + 1 WHERE id = ?'),
+        deleteExpired: db.prepare('DELETE FROM verification_codes WHERE expires_at <= ?')
+    },
+
+    // セッション関連
+    sessions: {
+        create: db.prepare(`
+            INSERT INTO sessions (id, user_id, token, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        `),
+        findByToken: db.prepare('SELECT * FROM sessions WHERE token = ? AND expires_at > ?'),
+        delete: db.prepare('DELETE FROM sessions WHERE token = ?'),
+        deleteExpired: db.prepare('DELETE FROM sessions WHERE expires_at <= ?'),
+        deleteByUserId: db.prepare('DELETE FROM sessions WHERE user_id = ?')
+    },
+
+    // お問い合わせ関連
+    contacts: {
+        create: db.prepare(`
+            INSERT INTO contacts (id, user_id, name, email, subject, message, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `),
+        findById: db.prepare('SELECT * FROM contacts WHERE id = ?'),
+        findByUserId: db.prepare('SELECT * FROM contacts WHERE user_id = ? ORDER BY created_at DESC'),
+        getAll: db.prepare('SELECT * FROM contacts ORDER BY created_at DESC'),
+        updateStatus: db.prepare('UPDATE contacts SET status = ? WHERE id = ?')
+    },
+
+    // 決済関連
+    payments: {
+        create: db.prepare(`
+            INSERT INTO payments (
+                id, request_id, payment_type, amount, status, payment_method,
+                payment_date, receipt_url, notes, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `),
+        findById: db.prepare('SELECT * FROM payments WHERE id = ?'),
+        findByRequestId: db.prepare('SELECT * FROM payments WHERE request_id = ? ORDER BY created_at DESC'),
+        updateStatus: db.prepare('UPDATE payments SET status = ?, payment_date = ?, updated_at = ? WHERE id = ?'),
+        updateReceipt: db.prepare('UPDATE payments SET receipt_url = ?, updated_at = ? WHERE id = ?')
+    },
+
+    // 通知関連
+    notifications: {
+        create: db.prepare(`
+            INSERT INTO notifications (
+                id, request_id, user_id, notification_type, channel, recipient,
+                subject, message, sent_at, status, error_message, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `),
+        findById: db.prepare('SELECT * FROM notifications WHERE id = ?'),
+        findByRequestId: db.prepare('SELECT * FROM notifications WHERE request_id = ? ORDER BY created_at DESC'),
+        findPending: db.prepare('SELECT * FROM notifications WHERE status = ? ORDER BY created_at ASC LIMIT ?'),
+        updateStatus: db.prepare('UPDATE notifications SET status = ?, sent_at = ?, error_message = ? WHERE id = ?')
+    },
+
+    // 買取依頼関連
+    kaitoriRequests: {
+        create: db.prepare(`
+            INSERT INTO kaitori_requests (
+                id, token, card_name, card_condition, card_image_url, assessment_price,
+                assessment_comment, assessor_name, assessment_date, customer_name,
+                customer_email, customer_phone, status, valid_until, notes, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `),
+        findByToken: db.prepare('SELECT * FROM kaitori_requests WHERE token = ?'),
+        findById: db.prepare('SELECT * FROM kaitori_requests WHERE id = ?'),
+        getAll: db.prepare('SELECT * FROM kaitori_requests ORDER BY created_at DESC'),
+        findByStatus: db.prepare('SELECT * FROM kaitori_requests WHERE status = ? ORDER BY created_at DESC'),
+        updateAssessment: db.prepare(`
+            UPDATE kaitori_requests SET
+                assessment_price = ?, assessment_comment = ?, assessor_name = ?,
+                assessment_date = ?, updated_at = ?
+            WHERE id = ?
+        `),
+        updateResponse: db.prepare(`
+            UPDATE kaitori_requests SET
+                status = ?, response_type = ?, response_date = ?, updated_at = ?
+            WHERE token = ?
+        `),
+        updateBankInfo: db.prepare(`
+            UPDATE kaitori_requests SET
+                bank_name = ?, bank_branch = ?, account_number = ?, account_holder = ?, updated_at = ?
+            WHERE token = ?
+        `)
     }
 };
 

@@ -398,6 +398,186 @@ class DatabaseService {
 
         return stats;
     }
+
+    // 承認レスポンス更新
+    updateApprovalResponse(approvalKey, responseData) {
+        const approval = queries.approvals.findByKey.get(approvalKey);
+        if (!approval) return null;
+
+        const now = new Date().toISOString();
+
+        // トランザクションで更新
+        const updateTx = transaction(() => {
+            // 承認ステータスの更新
+            queries.approvals.updateStatus.run(responseData.status, now, approval.id);
+
+            // カードごとの回答を更新
+            if (responseData.cards && Array.isArray(responseData.cards)) {
+                responseData.cards.forEach(card => {
+                    const approvalCard = queries.approvalCards.findByApprovalId.all(approval.id)
+                        .find(ac => ac.card_name === card.name);
+
+                    if (approvalCard) {
+                        queries.approvalCards.updateDecision.run(
+                            card.status || null,
+                            card.notes || null,
+                            approvalCard.id
+                        );
+                    }
+                });
+            }
+        });
+
+        updateTx();
+        return this.getApprovalByKey(approvalKey);
+    }
+
+    // お問い合わせ管理
+    createContact(contactData) {
+        const contactId = uuidv4();
+        const now = new Date().toISOString();
+
+        queries.contacts.create.run(
+            contactId,
+            contactData.userId || null,
+            contactData.name,
+            contactData.email,
+            contactData.subject,
+            contactData.message,
+            'new',
+            now
+        );
+
+        return queries.contacts.findById.get(contactId);
+    }
+
+    getAllContacts() {
+        return queries.contacts.getAll.all();
+    }
+
+    getUserContacts(userId) {
+        return queries.contacts.findByUserId.all(userId);
+    }
+
+    updateContactStatus(contactId, status) {
+        queries.contacts.updateStatus.run(status, contactId);
+        return queries.contacts.findById.get(contactId);
+    }
+
+    // 通知管理
+    createNotification(notificationData) {
+        const notificationId = uuidv4();
+        const now = new Date().toISOString();
+
+        queries.notifications.create.run(
+            notificationId,
+            notificationData.requestId,
+            notificationData.userId || null,
+            notificationData.notificationType,
+            notificationData.channel,
+            notificationData.recipient,
+            notificationData.subject || null,
+            notificationData.message,
+            null,
+            'pending',
+            null,
+            now
+        );
+
+        return notificationId;
+    }
+
+    getNotificationsForRequest(requestId) {
+        return queries.notifications.findByRequestId.all(requestId);
+    }
+
+    getPendingNotifications(limit = 10) {
+        return queries.notifications.findPending.all('pending', limit);
+    }
+
+    updateNotificationStatus(notificationId, status, error = null) {
+        const now = new Date().toISOString();
+        queries.notifications.updateStatus.run(status, now, error, notificationId);
+    }
+
+    // 買取依頼管理
+    createKaitoriRequest(requestData) {
+        const requestId = uuidv4();
+        const now = new Date().toISOString();
+
+        queries.kaitoriRequests.create.run(
+            requestId,
+            requestData.token,
+            requestData.cardName,
+            requestData.cardCondition || null,
+            requestData.cardImageUrl || null,
+            requestData.assessmentPrice || null,
+            requestData.assessmentComment || null,
+            requestData.assessorName || null,
+            requestData.assessmentDate || null,
+            requestData.customerName,
+            requestData.customerEmail,
+            requestData.customerPhone || null,
+            'pending',
+            requestData.validUntil,
+            requestData.notes || null,
+            now,
+            now
+        );
+
+        return queries.kaitoriRequests.findById.get(requestId);
+    }
+
+    getKaitoriRequestByToken(token) {
+        return queries.kaitoriRequests.findByToken.get(token);
+    }
+
+    getAllKaitoriRequests() {
+        return queries.kaitoriRequests.getAll.all();
+    }
+
+    updateKaitoriAssessment(requestId, assessmentData) {
+        const now = new Date().toISOString();
+
+        queries.kaitoriRequests.updateAssessment.run(
+            assessmentData.price,
+            assessmentData.comment || null,
+            assessmentData.assessorName || null,
+            assessmentData.date || now,
+            now,
+            requestId
+        );
+
+        return queries.kaitoriRequests.findById.get(requestId);
+    }
+
+    updateKaitoriResponse(token, responseData) {
+        const now = new Date().toISOString();
+
+        const updateTx = transaction(() => {
+            queries.kaitoriRequests.updateResponse.run(
+                responseData.status || 'responded',
+                responseData.responseType,
+                now,
+                now,
+                token
+            );
+
+            if (responseData.responseType === 'approved' && responseData.bankInfo) {
+                queries.kaitoriRequests.updateBankInfo.run(
+                    responseData.bankInfo.bankName,
+                    responseData.bankInfo.bankBranch,
+                    responseData.bankInfo.accountNumber,
+                    responseData.bankInfo.accountHolder,
+                    now,
+                    token
+                );
+            }
+        });
+
+        updateTx();
+        return queries.kaitoriRequests.findByToken.get(token);
+    }
 }
 
 module.exports = new DatabaseService();
