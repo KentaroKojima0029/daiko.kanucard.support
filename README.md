@@ -123,7 +123,7 @@ FTP_USER=your-ftp-username
 FTP_PASSWORD=your-ftp-password
 
 # Application
-BASE_URL=https://new-daiko-form.onrender.com
+BASE_URL=https://kanucard-daiko-support.onrender.com
 ```
 
 ### 6. ローカル開発
@@ -234,7 +234,7 @@ git push origin main
 
 ### 公開API（認証不要・CORS対応）
 
-利用者サイト (https://new-daiko-form.onrender.com) から利用可能:
+利用者サイト (https://daiko.kanucard.com) から利用可能:
 
 - `GET /api/public/service-status` - サービス状況取得
 - `GET /api/public/schedule` - 発送スケジュール取得
@@ -279,7 +279,7 @@ cp ./data/psa_system.db ./backup/psa_system_$(date +%Y%m%d_%H%M%S).db
 
 ## 利用者サイトとの統合
 
-利用者サイト (https://new-daiko-form.onrender.com) との統合方法については `INTEGRATION_GUIDE.md` を参照してください。
+利用者サイト (https://daiko.kanucard.com) との統合方法については `INTEGRATION_GUIDE.md` を参照してください。
 
 ## セキュリティ
 

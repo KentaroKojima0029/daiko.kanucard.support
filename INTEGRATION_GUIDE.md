@@ -1,7 +1,7 @@
 # 利用者サイト連携ガイド
 
 ## 概要
-管理者サイト (https://kanucard-daiko-support.onrender.com) と利用者サイト (https://new-daiko-form.onrender.com) を連携させるための実装ガイドです。
+管理者サイト (https://kanucard-daiko-support.onrender.com) と利用者サイト (https://daiko.kanucard.com) を連携させるための実装ガイドです。
 
 このガイドでは、SQLiteデータベースを使用した統合システムの公開APIを利用して、利用者サイトから必要な情報を取得する方法を説明します。
 
@@ -700,7 +700,7 @@ if (approvalKey) {
 ## CORS設定について
 
 管理者サイトはCORS設定により、以下のオリジンからのアクセスを許可しています:
-- `https://new-daiko-form.onrender.com` (本番環境)
+- `https://kanucard-daiko-support.onrender.com` (本番環境)
 - `http://localhost:*` (ローカル開発環境)
 
 ローカル開発環境でテストする場合、特別な設定は不要です。
@@ -712,7 +712,7 @@ if (approvalKey) {
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
-      'https://new-daiko-form.onrender.com',
+      'https://kanucard-daiko-support.onrender.com',
       'http://localhost:3000',
       'http://localhost:5000',
       'http://localhost:8080'

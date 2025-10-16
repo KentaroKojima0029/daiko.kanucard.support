@@ -215,7 +215,7 @@
 
 ### 公開API（認証不要・CORS対応）
 
-利用者サイト (https://new-daiko-form.onrender.com) から利用可能:
+利用者サイト (https://daiko.kanucard.com) から利用可能:
 
 - `GET /api/public/service-status` - サービス状況取得
 - `GET /api/public/schedule` - 発送スケジュール取得
@@ -289,7 +289,7 @@ FTP_USER=your-ftp-username
 FTP_PASSWORD=your-ftp-password
 
 # Application
-BASE_URL=https://new-daiko-form.onrender.com
+BASE_URL=https://kanucard-daiko-support.onrender.com
 ```
 
 ## 開発

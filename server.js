@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors({
-    origin: ['https://new-daiko-form.onrender.com', 'http://localhost:3001', 'http://localhost:3000'],
+    origin: ['https://kanucard-daiko-support.onrender.com', 'https://daiko.kanucard.com', 'http://localhost:3001', 'http://localhost:3000'],
     credentials: true
 }));
 app.use(express.json());
@@ -860,7 +860,7 @@ async function sendMessageEmail(message, toEmail) {
                     <p>${message.message}</p>
                 </div>
                 <p style="margin-top: 20px;">
-                    <a href="https://new-daiko-form.onrender.com/mypage" style="background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+                    <a href="https://kanucard-daiko-support.onrender.com/mypage" style="background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
                         マイページで確認
                     </a>
                 </p>
@@ -876,7 +876,7 @@ async function sendMessageEmail(message, toEmail) {
 }
 
 async function sendApprovalEmail(approval) {
-    const approvalUrl = `https://new-daiko-form.onrender.com/approval/${approval.approval_key}`;
+    const approvalUrl = `https://kanucard-daiko-support.onrender.com/approval/${approval.approval_key}`;
 
     const mailOptions = {
         from: `PSA代行サービス <${process.env.SMTP_USER || 'collection@kanucard.com'}>`,

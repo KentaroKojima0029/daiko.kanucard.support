@@ -184,7 +184,7 @@ async function sendApprovalEmail(requestData) {
         notes
     } = requestData;
 
-    const approvalUrl = `${process.env.BASE_URL || 'https://new-daiko-form.onrender.com'}/approval/${approvalKey}`;
+    const approvalUrl = `${process.env.BASE_URL || 'https://daiko.kanucard.com'}/approval/${approvalKey}`;
 
     // カード情報のHTML生成
     const cardsHtml = cards.map((card, index) => `
