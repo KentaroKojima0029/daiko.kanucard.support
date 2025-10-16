@@ -65,6 +65,7 @@ const transporter = nodemailer.createTransport({
 // Xserverへのデータベースバックアップ
 async function backupDatabaseToXserver() {
     if (!ftpConfig.user || !ftpConfig.password) {
+        console.log('FTP backup skipped: credentials not configured');
         return;
     }
 
@@ -81,7 +82,8 @@ async function backupDatabaseToXserver() {
         await client.uploadFrom(dbPath, remotePath);
         console.log('✓ Database backed up to Xserver');
     } catch (error) {
-        console.error('FTP backup error:', error);
+        // FTPエラーは無視（バックアップはオプション機能）
+        console.log('FTP backup failed (skipping)');
     } finally {
         client.close();
     }
