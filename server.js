@@ -62,31 +62,10 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-// Xserverへのデータベースバックアップ
+// Xserverへのデータベースバックアップ（無効化）
 async function backupDatabaseToXserver() {
-    if (!ftpConfig.user || !ftpConfig.password) {
-        console.log('FTP backup skipped: credentials not configured');
-        return;
-    }
-
-    const dbPath = path.join(DATA_DIR, 'psa_system.db');
-    if (!fs.existsSync(dbPath)) {
-        return;
-    }
-
-    const client = new Client();
-    try {
-        await client.access(ftpConfig);
-        const remotePath = '/kanucard-backup/psa_system.db';
-        await client.ensureDir('/kanucard-backup');
-        await client.uploadFrom(dbPath, remotePath);
-        console.log('✓ Database backed up to Xserver');
-    } catch (error) {
-        // FTPエラーは無視（バックアップはオプション機能）
-        console.log('FTP backup failed (skipping)');
-    } finally {
-        client.close();
-    }
+    // FTPバックアップは完全に無効化されています
+    return;
 }
 
 // 定期的なデータベースバックアップ（1時間ごと）
