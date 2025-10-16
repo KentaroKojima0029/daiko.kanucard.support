@@ -8,7 +8,6 @@ const fs = require('fs');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
-const { Client } = require('basic-ftp');
 
 // データベースサービスのインポート
 const dbService = require('./services/database-service');
@@ -43,14 +42,6 @@ if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-// Xserver FTP設定
-const ftpConfig = {
-    host: process.env.FTP_HOST || 'sv10210.xserver.jp',
-    user: process.env.FTP_USER,
-    password: process.env.FTP_PASSWORD,
-    secure: false
-};
-
 // メール送信設定
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'sv10210.xserver.jp',
@@ -61,16 +52,6 @@ const transporter = nodemailer.createTransport({
         pass: process.env.SMTP_PASS
     }
 });
-
-// Xserverへのデータベースバックアップ（無効化）
-async function backupDatabaseToXserver() {
-    // FTPバックアップは完全に無効化されています
-    return;
-}
-
-// 定期的なデータベースバックアップ（1時間ごと）
-// FTPバックアップは無効化されています
-// setInterval(backupDatabaseToXserver, 60 * 60 * 1000);
 
 // 認証ミドルウェア（JWT認証）
 function authenticateToken(req, res, next) {
@@ -956,9 +937,6 @@ app.listen(PORT, () => {
     console.log(`Admin Dashboard: http://localhost:${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`Database: SQLite`);
-
-    // 初回バックアップ（無効化）
-    // setTimeout(backupDatabaseToXserver, 5000);
 });
 
 module.exports = app;

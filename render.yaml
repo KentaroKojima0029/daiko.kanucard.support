@@ -23,11 +23,5 @@ services:
         value: collection@kanucard.com
       - key: SMTP_PASS
         sync: false
-      - key: FTP_HOST
-        value: sv10210.xserver.jp
-      - key: FTP_USER
-        sync: false
-      - key: FTP_PASSWORD
-        sync: false
       - key: BASE_URL
         value: https://kanucard-daiko-support.onrender.com
