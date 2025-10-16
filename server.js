@@ -90,7 +90,8 @@ async function backupDatabaseToXserver() {
 }
 
 // 定期的なデータベースバックアップ（1時間ごと）
-setInterval(backupDatabaseToXserver, 60 * 60 * 1000);
+// FTPバックアップは無効化されています
+// setInterval(backupDatabaseToXserver, 60 * 60 * 1000);
 
 // 認証ミドルウェア（JWT認証）
 function authenticateToken(req, res, next) {
@@ -977,8 +978,8 @@ app.listen(PORT, () => {
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`Database: SQLite`);
 
-    // 初回バックアップ
-    setTimeout(backupDatabaseToXserver, 5000);
+    // 初回バックアップ（無効化）
+    // setTimeout(backupDatabaseToXserver, 5000);
 });
 
 module.exports = app;
