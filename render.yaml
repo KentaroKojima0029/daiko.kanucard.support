@@ -2,7 +2,7 @@ services:
   - type: web
     name: kanucard-daiko-support
     runtime: node
-    buildCommand: npm install
+    buildCommand: rm -rf node_modules && npm install
     startCommand: npm start
     envVars:
       - key: NODE_ENV
