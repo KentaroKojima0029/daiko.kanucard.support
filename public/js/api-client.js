@@ -145,7 +145,7 @@ class ApiClient {
           // トークンを削除して再ログインを促す
           this.removeToken();
           setTimeout(() => {
-            window.location.href = '/admin.html';
+            window.location.href = '/login.html';
           }, 2000);
         }
         break;

@@ -970,14 +970,29 @@
 
         // 初期化
         document.addEventListener('DOMContentLoaded', async () => {
+            // 無限リダイレクト防止
+            const redirectCount = parseInt(sessionStorage.getItem('redirectCount') || '0');
+            if (redirectCount > 3) {
+                alert('ログインエラー：無限リダイレクトを検出しました。\nセッションをクリアして再度ログインしてください。');
+                sessionStorage.removeItem('redirectCount');
+                localStorage.clear(); // トークンもクリア
+                window.location.href = '/login.html';
+                return;
+            }
+            sessionStorage.setItem('redirectCount', (redirectCount + 1).toString());
+
             // 認証チェック
             if (!authAPI.isAuthenticated()) {
                 showNotification('ログインが必要です', 'error');
                 setTimeout(() => {
+                    sessionStorage.removeItem('redirectCount'); // 正常なリダイレクトの場合はカウントをリセット
                     window.location.href = '/login.html';
                 }, 1500);
                 return;
             }
+
+            // 認証成功時はカウントをリセット
+            sessionStorage.removeItem('redirectCount');
 
             // 管理者権限チェック
             try {

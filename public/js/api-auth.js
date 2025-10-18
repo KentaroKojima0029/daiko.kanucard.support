@@ -79,7 +79,7 @@ const authAPI = {
 
       // ログインページへリダイレクト
       setTimeout(() => {
-        window.location.href = '/admin.html';
+        window.location.href = '/login.html';
       }, 100);
 
       return {
@@ -233,7 +233,7 @@ const authAPI = {
     // トークンの存在確認
     if (!this.isAuthenticated()) {
       console.warn('Not authenticated, redirecting to login...');
-      window.location.href = '/admin.html';
+      window.location.href = '/login.html';
       return false;
     }
 
@@ -310,12 +310,13 @@ const authAPI = {
 };
 
 // ページ読み込み時にセッション管理を初期化
-if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => {
-    // 管理者ページまたは認証が必要なページの場合
-    if (window.location.pathname.includes('admin') ||
-        window.location.pathname.includes('dashboard')) {
-      authAPI.initSession();
-    }
-  });
-}
+// 注意: admin.html 側で独自の初期化ロジックがあるため、自動初期化を無効化
+// if (typeof document !== 'undefined') {
+//   document.addEventListener('DOMContentLoaded', () => {
+//     // 管理者ページまたは認証が必要なページの場合
+//     if (window.location.pathname.includes('admin') ||
+//         window.location.pathname.includes('dashboard')) {
+//       authAPI.initSession();
+//     }
+//   });
+// }
