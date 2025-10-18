@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PSA代行 買取承認</title>
+
+<!-- APIクライアント（顧客用の限定版） -->
+<script src="/js/api-config.js"></script>
+<script src="/js/api-client.js"></script>
+
 <style>
 /* 基本スタイル */
 * {
@@ -688,25 +693,28 @@ async function loadApprovalData() {
     hideError();
 
     try {
-        const response = await fetch(`/api/approval/${approvalKey}`);
-        const data = await response.json();
+        // APIクライアントを使用してデータ取得
+        const response = await apiClient.get(`/api/approval/${approvalKey}`);
 
-        console.log('サーバーレスポンス:', data);
+        console.log('サーバーレスポンス:', response);
 
-        if (response.ok && data.success) {
-            currentApprovalData = data.data;
+        if (response.success && response.data) {
+            currentApprovalData = response.data;
             currentApprovalKey = approvalKey;
-            displayApprovalData(data.data);
+            displayApprovalData(response.data);
             console.log('承認データの読み込み完了');
         } else {
-            showError(data.message || '承認情報の取得に失敗しました。承認キーを確認してください。');
-            console.error('承認データ取得エラー:', data.message);
+            const errorMessage = response.message || '承認情報の取得に失敗しました。承認キーを確認してください。';
+            showError(errorMessage);
+            console.error('承認データ取得エラー:', errorMessage);
             // エラー時は承認キー入力セクションを再表示
             document.getElementById('keyInputSection').style.display = 'block';
         }
     } catch (error) {
         console.error('承認データ取得エラー:', error);
-        showError('サーバーとの通信に失敗しました。しばらくしてから再度お試しください。');
+        // APIクライアントのエラーメッセージ取得ユーティリティを使用
+        const errorMessage = API_UTILS.getErrorMessage(error);
+        showError(`サーバーとの通信に失敗しました: ${errorMessage}`);
         // エラー時は承認キー入力セクションを再表示
         document.getElementById('keyInputSection').style.display = 'block';
     } finally {
@@ -947,25 +955,20 @@ async function submitFinalResponse() {
     };
 
     try {
-        const response = await fetch(`/api/approval/${currentApprovalKey}/submit`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(submitData)
-        });
+        // APIクライアントを使用してデータ送信
+        const response = await apiClient.post(`/api/approval/${currentApprovalKey}/submit`, submitData);
 
-        const data = await response.json();
-
-        if (response.ok && data.success) {
-            showAlert('✅', '送信完了', data.message || '承認内容を正常に送信しました。');
+        if (response.success) {
+            showAlert('✅', '送信完了', response.message || '承認内容を正常に送信しました。');
             disableAllInputs();
         } else {
-            showAlert('❌', 'エラー', data.message || '送信に失敗しました。');
+            showAlert('❌', 'エラー', response.message || '送信に失敗しました。');
         }
     } catch (error) {
         console.error('送信エラー:', error);
-        showAlert('❌', 'エラー', 'サーバーとの通信に失敗しました。');
+        // APIクライアントのエラーメッセージ取得ユーティリティを使用
+        const errorMessage = API_UTILS.getErrorMessage(error);
+        showAlert('❌', 'エラー', `サーバーとの通信に失敗しました: ${errorMessage}`);
     } finally {
         showLoadingOverlay(false);
     }

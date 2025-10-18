@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理者ログイン - PSA代行サービス</title>
+
+    <!-- APIクライアント読み込み -->
+    <script src="/js/api-config.js"></script>
+    <script src="/js/api-client.js"></script>
+    <script src="/js/api-auth.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .login-container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            width: 100%;
+            max-width: 420px;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .login-header h1 {
+            color: #2c3e50;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .login-header p {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 36px;
+            color: white;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        label {
+            display: block;
+            color: #555;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .password-wrapper {
+            position: relative;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #999;
+        }
+
+        .remember-me {
+            display: flex;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .remember-me input[type="checkbox"] {
+            width: auto;
+            margin-right: 8px;
+        }
+
+        .remember-me label {
+            margin-bottom: 0;
+            cursor: pointer;
+        }
+
+        .login-button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .login-button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c00;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+            animation: shake 0.5s;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
+
+        .success-message {
+            background: #dfd;
+            border: 1px solid #cfc;
+            color: #060;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .forgot-password {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .forgot-password a {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .forgot-password a:hover {
+            text-decoration: underline;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #999;
+            font-size: 12px;
+        }
+
+        /* レスポンシブ対応 */
+        @media (max-width: 480px) {
+            .login-container {
+                margin: 20px;
+                padding: 30px 20px;
+            }
+
+            .login-header h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <div class="logo">🔐</div>
+            <h1>管理者ログイン</h1>
+            <p>PSA代行サービス 総合管理システム</p>
+        </div>
+
+        <form id="loginForm">
+            <div id="errorMessage" class="error-message"></div>
+            <div id="successMessage" class="success-message"></div>
+
+            <div class="form-group">
+                <label for="email">メールアドレス</label>
+                <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    required
+                    placeholder="admin@example.com"
+                    autocomplete="email"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="password">パスワード</label>
+                <div class="password-wrapper">
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        required
+                        placeholder="パスワードを入力"
+                        autocomplete="current-password"
+                    >
+                    <span class="toggle-password" onclick="togglePassword()">👁️</span>
+                </div>
+            </div>
+
+            <div class="remember-me">
+                <input type="checkbox" id="remember" name="remember">
+                <label for="remember">ログイン状態を保持する</label>
+            </div>
+
+            <button type="submit" class="login-button" id="loginButton">
+                <span id="buttonText">ログイン</span>
+                <div class="loading" id="loading"></div>
+            </button>
+        </form>
+
+        <div class="forgot-password">
+            <a href="#" onclick="showForgotPassword()">パスワードをお忘れの方</a>
+        </div>
+
+        <div class="footer">
+            <p>© 2024 PSA代行サービス. All rights reserved.</p>
+            <p>セキュアな接続で保護されています 🔒</p>
+        </div>
+    </div>
+
+    <script>
+        // デバッグモード（開発環境での設定）
+        const DEBUG_MODE = false;
+        const DEFAULT_EMAIL = DEBUG_MODE ? 'admin@example.com' : '';
+        const DEFAULT_PASSWORD = DEBUG_MODE ? 'password123' : '';
+
+        // ページ読み込み時
+        document.addEventListener('DOMContentLoaded', () => {
+            // 既にログイン済みの場合はダッシュボードへリダイレクト
+            if (authAPI.isAuthenticated()) {
+                checkAndRedirect();
+            }
+
+            // デバッグモードの場合、デフォルト値を設定
+            if (DEBUG_MODE) {
+                document.getElementById('email').value = DEFAULT_EMAIL;
+                document.getElementById('password').value = DEFAULT_PASSWORD;
+            }
+
+            // Enterキーでのsubmit対応
+            document.getElementById('password').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    document.getElementById('loginForm').dispatchEvent(new Event('submit'));
+                }
+            });
+        });
+
+        // 既存ユーザーのリダイレクト
+        async function checkAndRedirect() {
+            try {
+                const isAdmin = await authAPI.isAdmin();
+                if (isAdmin) {
+                    showMessage('success', '既にログイン済みです。ダッシュボードへ移動します...');
+                    setTimeout(() => {
+                        window.location.href = '/admin.html';
+                    }, 1000);
+                }
+            } catch (error) {
+                // トークンが無効な場合は何もしない
+                console.log('Token validation failed, showing login form');
+            }
+        }
+
+        // フォーム送信処理
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const remember = document.getElementById('remember').checked;
+
+            // バリデーション
+            if (!email || !password) {
+                showMessage('error', 'メールアドレスとパスワードを入力してください');
+                return;
+            }
+
+            // メールアドレス形式チェック
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showMessage('error', 'メールアドレスの形式が正しくありません');
+                return;
+            }
+
+            // ローディング表示
+            setLoading(true);
+            hideMessages();
+
+            try {
+                // ログイン実行
+                const user = await authAPI.login(email, password);
+
+                // 管理者権限の確認
+                if (user.role !== 'admin') {
+                    throw new Error('管理者権限がありません。管理者アカウントでログインしてください。');
+                }
+
+                // 成功メッセージ表示
+                showMessage('success', 'ログインに成功しました。ダッシュボードへ移動します...');
+
+                // リダイレクト
+                setTimeout(() => {
+                    window.location.href = '/admin.html';
+                }, 1500);
+
+            } catch (error) {
+                // エラーメッセージ表示
+                let errorMessage = 'ログインに失敗しました。';
+
+                if (error.message) {
+                    errorMessage = error.message;
+                } else if (error.code === ERROR_CODES.INVALID_CREDENTIALS) {
+                    errorMessage = 'メールアドレスまたはパスワードが正しくありません。';
+                } else if (error.code === ERROR_CODES.NETWORK_ERROR) {
+                    errorMessage = 'ネットワークエラーが発生しました。インターネット接続を確認してください。';
+                } else if (error.code === ERROR_CODES.SERVER_ERROR) {
+                    errorMessage = 'サーバーエラーが発生しました。しばらくしてから再度お試しください。';
+                }
+
+                showMessage('error', errorMessage);
+
+                // パスワードフィールドをクリア
+                document.getElementById('password').value = '';
+                document.getElementById('password').focus();
+
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        // パスワード表示/非表示切り替え
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const toggleIcon = document.querySelector('.toggle-password');
+
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.textContent = '🙈';
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.textContent = '👁️';
+            }
+        }
+
+        // メッセージ表示
+        function showMessage(type, message) {
+            hideMessages();
+
+            const messageEl = type === 'error'
+                ? document.getElementById('errorMessage')
+                : document.getElementById('successMessage');
+
+            messageEl.textContent = message;
+            messageEl.style.display = 'block';
+
+            // エラーメッセージは5秒後に自動で消す
+            if (type === 'error') {
+                setTimeout(hideMessages, 5000);
+            }
+        }
+
+        // メッセージ非表示
+        function hideMessages() {
+            document.getElementById('errorMessage').style.display = 'none';
+            document.getElementById('successMessage').style.display = 'none';
+        }
+
+        // ローディング状態の管理
+        function setLoading(isLoading) {
+            const button = document.getElementById('loginButton');
+            const buttonText = document.getElementById('buttonText');
+            const loading = document.getElementById('loading');
+
+            if (isLoading) {
+                button.disabled = true;
+                buttonText.style.display = 'none';
+                loading.style.display = 'block';
+            } else {
+                button.disabled = false;
+                buttonText.style.display = 'inline';
+                loading.style.display = 'none';
+            }
+        }
+
+        // パスワードリセット
+        function showForgotPassword() {
+            alert('パスワードリセット機能は管理者にお問い合わせください。\n\nEmail: admin@example.com\nTel: 03-1234-5678');
+        }
+
+        // セキュリティ: コンソール警告
+        console.log('%c⚠️ 警告', 'color: red; font-size: 30px; font-weight: bold;');
+        console.log('%cこのコンソールは開発者向けです。パスワードやトークンを貼り付けないでください。', 'color: red; font-size: 14px;');
+    </script>
+</body>
+</html>
