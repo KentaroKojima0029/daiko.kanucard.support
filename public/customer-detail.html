@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>顧客詳細 - Shopify注文履歴</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="/js/api-config.js"></script>
+    <script src="/js/api-client.js"></script>
+    <script src="/js/api-auth.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* ヘッダー */
+        .header {
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            color: #1a73e8;
+        }
+
+        .back-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background 0.3s ease;
+        }
+
+        .back-button:hover {
+            background: #5a6268;
+        }
+
+        /* コンテナ */
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 20px;
+        }
+
+        /* ローディング */
+        .loading {
+            text-align: center;
+            padding: 3rem;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #1a73e8;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* エラーメッセージ */
+        .error-container {
+            background: #fff;
+            border: 1px solid #dc3545;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            color: #dc3545;
+        }
+
+        .error-container h2 {
+            margin-bottom: 1rem;
+        }
+
+        .retry-button {
+            margin-top: 1rem;
+            padding: 0.5rem 1.5rem;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .retry-button:hover {
+            background: #c82333;
+        }
+
+        /* 顧客情報カード */
+        .customer-info {
+            background: white;
+            border-radius: 10px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+
+        .customer-info h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            color: #333;
+            border-bottom: 2px solid #1a73e8;
+            padding-bottom: 0.5rem;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .info-label {
+            font-size: 0.875rem;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .info-value {
+            font-size: 1rem;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .info-value.email {
+            color: #1a73e8;
+        }
+
+        /* 注文履歴セクション */
+        .orders-section {
+            background: white;
+            border-radius: 10px;
+            padding: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+
+        .orders-section h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            color: #333;
+            border-bottom: 2px solid #1a73e8;
+            padding-bottom: 0.5rem;
+        }
+
+        /* 注文カード */
+        .order-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+
+        .order-header {
+            background: #f8f9fa;
+            padding: 1rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .order-number {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .order-date {
+            color: #666;
+            font-size: 0.875rem;
+        }
+
+        .order-total {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .order-statuses {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-paid {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-refunded {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-fulfilled {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-unfulfilled {
+            background: #cfe2ff;
+            color: #084298;
+        }
+
+        /* 注文アイテムテーブル */
+        .order-items {
+            padding: 1.5rem;
+        }
+
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .items-table th {
+            text-align: left;
+            padding: 0.75rem;
+            background: #f8f9fa;
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: #666;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .items-table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .items-table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .items-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* 空の状態 */
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #666;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            color: #ccc;
+            margin-bottom: 1rem;
+        }
+
+        /* レスポンシブ */
+        @media (max-width: 768px) {
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .order-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .items-table {
+                font-size: 0.875rem;
+            }
+
+            .items-table th,
+            .items-table td {
+                padding: 0.5rem;
+            }
+
+            .header h1 {
+                font-size: 1.25rem;
+            }
+        }
+
+        /* 金額表示 */
+        .currency {
+            font-weight: 600;
+        }
+
+        .currency::before {
+            content: '¥';
+            font-weight: 400;
+        }
+    </style>
+</head>
+<body>
+    <!-- ヘッダー -->
+    <header class="header">
+        <div class="header-content">
+            <h1>Shopify 顧客詳細</h1>
+            <a href="/admin.html" class="back-button">
+                <i class="fas fa-arrow-left"></i>
+                管理画面に戻る
+            </a>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="container" id="mainContent">
+        <!-- ローディング表示 -->
+        <div class="loading" id="loadingIndicator">
+            <div class="spinner"></div>
+            <p style="margin-top: 1rem; color: #666;">データを読み込み中...</p>
+        </div>
+
+        <!-- エラー表示 -->
+        <div class="error-container" id="errorContainer" style="display: none;">
+            <i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+            <h2>エラーが発生しました</h2>
+            <p id="errorMessage"></p>
+            <button class="retry-button" onclick="retryLoad()">
+                <i class="fas fa-redo"></i> 再試行
+            </button>
+        </div>
+
+        <!-- 顧客情報 -->
+        <div class="customer-info" id="customerInfo" style="display: none;">
+            <h2>顧客情報</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">顧客名</span>
+                    <span class="info-value" id="customerName">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">メールアドレス</span>
+                    <span class="info-value email" id="customerEmail">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">電話番号</span>
+                    <span class="info-value" id="customerPhone">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Shopify顧客ID</span>
+                    <span class="info-value" id="shopifyId">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">総注文数</span>
+                    <span class="info-value" id="ordersCount">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">総購入額</span>
+                    <span class="info-value currency" id="totalSpent">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">登録日</span>
+                    <span class="info-value" id="createdAt">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">最終更新日</span>
+                    <span class="info-value" id="updatedAt">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 注文履歴 -->
+        <div class="orders-section" id="ordersSection" style="display: none;">
+            <h2>注文履歴</h2>
+            <div id="ordersList"></div>
+        </div>
+    </main>
+
+    <script>
+        let customerEmail = null;
+
+        // ページ読み込み時の処理
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 認証チェック
+            if (!authAPI.isAuthenticated()) {
+                alert('ログインが必要です');
+                window.location.href = '/login.html';
+                return;
+            }
+
+            // URLパラメータからメールアドレスを取得
+            const params = new URLSearchParams(window.location.search);
+            customerEmail = params.get('email');
+
+            if (!customerEmail) {
+                showError('顧客メールアドレスが指定されていません');
+                return;
+            }
+
+            // データ読み込み
+            await loadCustomerData();
+        });
+
+        // 顧客データの読み込み
+        async function loadCustomerData() {
+            try {
+                showLoading(true);
+                hideError();
+
+                // APIエンドポイント
+                const response = await apiClient.get(`/api/shopify/customer/${encodeURIComponent(customerEmail)}/orders`);
+
+                if (response.success && response.data) {
+                    displayCustomerInfo(response.data.customer);
+                    displayOrders(response.data.orders);
+                    showLoading(false);
+                } else {
+                    throw new Error(response.message || '顧客データの取得に失敗しました');
+                }
+            } catch (error) {
+                console.error('Error loading customer data:', error);
+
+                if (error.code === ERROR_CODES.UNAUTHORIZED) {
+                    alert('ログインが必要です');
+                    window.location.href = '/login.html';
+                    return;
+                }
+
+                showError(error.message || 'データの読み込みに失敗しました');
+                showLoading(false);
+            }
+        }
+
+        // 顧客情報を表示
+        function displayCustomerInfo(customer) {
+            if (!customer) return;
+
+            document.getElementById('customerInfo').style.display = 'block';
+
+            // 名前を結合
+            const fullName = [customer.lastName, customer.firstName]
+                .filter(n => n)
+                .join(' ') || '未設定';
+
+            document.getElementById('customerName').textContent = fullName;
+            document.getElementById('customerEmail').textContent = customer.email || '-';
+            document.getElementById('customerPhone').textContent = customer.phone || '未設定';
+            document.getElementById('shopifyId').textContent = extractShopifyId(customer.shopifyId);
+            document.getElementById('ordersCount').textContent = customer.ordersCount || '0';
+
+            // 総購入額をフォーマット
+            const totalSpent = parseFloat(customer.totalSpent || 0);
+            document.getElementById('totalSpent').textContent = formatCurrency(totalSpent);
+
+            // 日付をフォーマット
+            document.getElementById('createdAt').textContent = formatDateTime(customer.createdAt);
+            document.getElementById('updatedAt').textContent = formatDateTime(customer.updatedAt);
+        }
+
+        // 注文履歴を表示
+        function displayOrders(orders) {
+            const ordersSection = document.getElementById('ordersSection');
+            const ordersList = document.getElementById('ordersList');
+
+            ordersSection.style.display = 'block';
+            ordersList.innerHTML = '';
+
+            if (!orders || orders.length === 0) {
+                ordersList.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-shopping-cart"></i>
+                        <p>注文履歴がありません</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // 各注文をカード形式で表示
+            orders.forEach(order => {
+                const orderCard = createOrderCard(order);
+                ordersList.appendChild(orderCard);
+            });
+        }
+
+        // 注文カードを作成
+        function createOrderCard(order) {
+            const card = document.createElement('div');
+            card.className = 'order-card';
+
+            // 注文ヘッダー
+            const header = document.createElement('div');
+            header.className = 'order-header';
+
+            const headerLeft = document.createElement('div');
+            headerLeft.innerHTML = `
+                <div class="order-number">${order.orderNumber || extractShopifyId(order.shopifyOrderId)}</div>
+                <div class="order-date">${formatDateTime(order.createdAt)}</div>
+            `;
+
+            const headerRight = document.createElement('div');
+            headerRight.style.display = 'flex';
+            headerRight.style.alignItems = 'center';
+            headerRight.style.gap = '1rem';
+
+            const total = document.createElement('div');
+            total.className = 'order-total currency';
+            total.textContent = formatCurrency(parseFloat(order.totalPrice || 0));
+
+            const statuses = document.createElement('div');
+            statuses.className = 'order-statuses';
+
+            // 支払いステータス
+            const financialStatus = document.createElement('span');
+            financialStatus.className = `status-badge ${getFinancialStatusClass(order.financialStatus)}`;
+            financialStatus.textContent = getFinancialStatusLabel(order.financialStatus);
+
+            // 配送ステータス
+            const fulfillmentStatus = document.createElement('span');
+            fulfillmentStatus.className = `status-badge ${getFulfillmentStatusClass(order.fulfillmentStatus)}`;
+            fulfillmentStatus.textContent = getFulfillmentStatusLabel(order.fulfillmentStatus);
+
+            statuses.appendChild(financialStatus);
+            statuses.appendChild(fulfillmentStatus);
+
+            headerRight.appendChild(total);
+            headerRight.appendChild(statuses);
+
+            header.appendChild(headerLeft);
+            header.appendChild(headerRight);
+            card.appendChild(header);
+
+            // 注文アイテム
+            if (order.items && order.items.length > 0) {
+                const itemsContainer = document.createElement('div');
+                itemsContainer.className = 'order-items';
+
+                const table = document.createElement('table');
+                table.className = 'items-table';
+
+                const thead = document.createElement('thead');
+                thead.innerHTML = `
+                    <tr>
+                        <th>商品名</th>
+                        <th>SKU</th>
+                        <th>数量</th>
+                        <th>単価</th>
+                        <th>小計</th>
+                    </tr>
+                `;
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                order.items.forEach(item => {
+                    const row = document.createElement('tr');
+                    const subtotal = parseFloat(item.price || 0) * parseInt(item.quantity || 0);
+                    row.innerHTML = `
+                        <td>${item.productName || '商品名なし'}</td>
+                        <td>${item.sku || '-'}</td>
+                        <td>${item.quantity || 0}</td>
+                        <td class="currency">${formatCurrency(parseFloat(item.price || 0))}</td>
+                        <td class="currency">${formatCurrency(subtotal)}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+                table.appendChild(tbody);
+
+                itemsContainer.appendChild(table);
+                card.appendChild(itemsContainer);
+            }
+
+            return card;
+        }
+
+        // Shopify IDから番号部分を抽出
+        function extractShopifyId(gid) {
+            if (!gid) return '-';
+            const match = gid.match(/\/(\d+)$/);
+            return match ? match[1] : gid;
+        }
+
+        // 金額をフォーマット
+        function formatCurrency(amount) {
+            return Math.floor(amount).toLocaleString('ja-JP');
+        }
+
+        // 日時をフォーマット
+        function formatDateTime(dateString) {
+            if (!dateString) return '-';
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) return dateString;
+
+            const options = {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            };
+            return date.toLocaleString('ja-JP', options);
+        }
+
+        // 支払いステータスのクラスを取得
+        function getFinancialStatusClass(status) {
+            switch(status) {
+                case 'PAID': return 'status-paid';
+                case 'REFUNDED': return 'status-refunded';
+                case 'PENDING': return 'status-pending';
+                default: return 'status-pending';
+            }
+        }
+
+        // 支払いステータスのラベルを取得
+        function getFinancialStatusLabel(status) {
+            switch(status) {
+                case 'PAID': return '支払済';
+                case 'REFUNDED': return '返金済';
+                case 'PENDING': return '保留中';
+                default: return status || '不明';
+            }
+        }
+
+        // 配送ステータスのクラスを取得
+        function getFulfillmentStatusClass(status) {
+            switch(status) {
+                case 'FULFILLED': return 'status-fulfilled';
+                case 'UNFULFILLED': return 'status-unfulfilled';
+                default: return 'status-unfulfilled';
+            }
+        }
+
+        // 配送ステータスのラベルを取得
+        function getFulfillmentStatusLabel(status) {
+            switch(status) {
+                case 'FULFILLED': return '配送済';
+                case 'UNFULFILLED': return '未配送';
+                default: return status || '不明';
+            }
+        }
+
+        // ローディング表示の切り替え
+        function showLoading(show) {
+            document.getElementById('loadingIndicator').style.display = show ? 'block' : 'none';
+            document.getElementById('customerInfo').style.display = show ? 'none' : 'block';
+            document.getElementById('ordersSection').style.display = show ? 'none' : 'block';
+        }
+
+        // エラー表示
+        function showError(message) {
+            document.getElementById('errorContainer').style.display = 'block';
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('loadingIndicator').style.display = 'none';
+            document.getElementById('customerInfo').style.display = 'none';
+            document.getElementById('ordersSection').style.display = 'none';
+        }
+
+        // エラー非表示
+        function hideError() {
+            document.getElementById('errorContainer').style.display = 'none';
+        }
+
+        // 再試行
+        function retryLoad() {
+            loadCustomerData();
+        }
+    </script>
+</body>
+</html>

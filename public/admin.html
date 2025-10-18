@@ -251,6 +251,22 @@
             color: #0c5460;
         }
 
+        /* ボタンスタイル - Shopifyボタン用に追加 */
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0 2px;
+            transition: background 0.3s ease;
+        }
+
+        .btn-info:hover {
+            background: #138496;
+        }
+
         /* タブ */
         .tabs {
             display: flex;
@@ -1518,20 +1534,31 @@
 
         function updateApplicationsTable() {
             const tbody = document.querySelector('#applicationsTable tbody');
-            tbody.innerHTML = currentData.applications.map(app => `
-                <tr>
-                    <td>${app.id.substring(0, 8)}</td>
-                    <td>${app.customerName || '-'}</td>
-                    <td>${app.customerEmail || '-'}</td>
-                    <td>${new Date(app.createdAt).toLocaleString('ja-JP')}</td>
-                    <td><span class="status status-${app.status}">${getStatusLabel(app.status)}</span></td>
-                    <td>
-                        <button class="btn btn-sm btn-primary" onclick="viewApplication('${app.id}')">詳細</button>
-                        <button class="btn btn-sm btn-success" onclick="updateApplicationStatus('${app.id}')">更新</button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteApplication('${app.id}')">削除</button>
-                    </td>
-                </tr>
-            `).join('');
+            tbody.innerHTML = currentData.applications.map(app => {
+                const customerEmail = app.customerEmail || '';
+                const customerEmailDisplay = customerEmail ?
+                    `<a href="/customer-detail.html?email=${encodeURIComponent(customerEmail)}"
+                       style="color: #1a73e8; text-decoration: none;"
+                       title="Shopify注文履歴を表示">${customerEmail}</a>` : '-';
+
+                return `
+                    <tr>
+                        <td>${app.id.substring(0, 8)}</td>
+                        <td>${app.customerName || '-'}</td>
+                        <td>${customerEmailDisplay}</td>
+                        <td>${new Date(app.createdAt).toLocaleString('ja-JP')}</td>
+                        <td><span class="status status-${app.status}">${getStatusLabel(app.status)}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="viewApplication('${app.id}')">詳細</button>
+                            ${customerEmail ? `<button class="btn btn-sm btn-info" onclick="viewCustomerHistory('${customerEmail}')">
+                                <i class="fas fa-shopping-cart"></i> Shopify
+                            </button>` : ''}
+                            <button class="btn btn-sm btn-success" onclick="updateApplicationStatus('${app.id}')">更新</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteApplication('${app.id}')">削除</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
 
             // 進捗管理用のセレクトボックスも更新
             const select = document.getElementById('progressApplicationSelect');
@@ -2325,6 +2352,15 @@
             } catch (error) {
                 showNotification('エラーが発生しました', 'error');
             }
+        }
+
+        // 顧客のShopify履歴を表示
+        function viewCustomerHistory(email) {
+            if (!email) {
+                alert('顧客のメールアドレスが指定されていません');
+                return;
+            }
+            window.location.href = `/customer-detail.html?email=${encodeURIComponent(email)}`;
         }
 
         // 画面外クリックでモーダルを閉じる
