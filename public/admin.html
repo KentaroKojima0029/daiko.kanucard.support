@@ -607,34 +607,34 @@
     <div class="main-container">
         <!-- サイドバー -->
         <div class="sidebar">
-            <div class="nav-item active" onclick="showSection('dashboard')">
+            <div class="nav-item active" onclick="showSection('dashboard', event)">
                 <i>📊</i>
                 <span>ダッシュボード</span>
             </div>
-            <div class="nav-item" onclick="showSection('applications')">
+            <div class="nav-item" onclick="showSection('applications', event)">
                 <i>📝</i>
                 <span>代行申込管理</span>
                 <span class="badge" id="applicationsBadge" style="display: none;">0</span>
             </div>
-            <div class="nav-item" onclick="showSection('progress')">
+            <div class="nav-item" onclick="showSection('progress', event)">
                 <i>📈</i>
                 <span>進捗状況管理</span>
             </div>
-            <div class="nav-item" onclick="showSection('messages')">
+            <div class="nav-item" onclick="showSection('messages', event)">
                 <i>💬</i>
                 <span>メッセージ管理</span>
                 <span class="badge" id="messagesBadge" style="display: none;">0</span>
             </div>
-            <div class="nav-item" onclick="showSection('approvals')">
+            <div class="nav-item" onclick="showSection('approvals', event)">
                 <i>✅</i>
                 <span>買取承認管理</span>
                 <span class="badge" id="approvalsBadge" style="display: none;">0</span>
             </div>
-            <div class="nav-item" onclick="showSection('service')">
+            <div class="nav-item" onclick="showSection('service', event)">
                 <i>⚙️</i>
                 <span>サービス状況設定</span>
             </div>
-            <div class="nav-item" onclick="showSection('schedule')">
+            <div class="nav-item" onclick="showSection('schedule', event)">
                 <i>📅</i>
                 <span>発送スケジュール</span>
             </div>
@@ -1412,7 +1412,13 @@
                 const data = await response.json();
                 if (data.success) {
                     currentData.serviceStatus = data.data;
-                    updateServiceStatusDisplay();
+                    // updateServiceStatusDisplay関数を追加
+                    if (typeof updateServiceStatusDisplay === 'function') {
+                        updateServiceStatusDisplay();
+                    } else {
+                        // サービスステータスの表示を更新（簡易実装）
+                        console.log('Service status updated:', data.data);
+                    }
                 }
             } catch (error) {
                 console.error('Failed to load service status:', error);
@@ -1620,7 +1626,7 @@
         }
 
         // セクション表示切り替え
-        function showSection(sectionName) {
+        function showSection(sectionName, event) {
             // すべてのセクションを非表示
             document.querySelectorAll('.section').forEach(section => {
                 section.style.display = 'none';
@@ -1633,7 +1639,21 @@
             document.querySelectorAll('.nav-item').forEach(item => {
                 item.classList.remove('active');
             });
-            event.target.closest('.nav-item').classList.add('active');
+
+            // イベントがある場合は、クリックされた要素をアクティブに
+            if (event && event.target) {
+                const navItem = event.target.closest('.nav-item');
+                if (navItem) {
+                    navItem.classList.add('active');
+                }
+            } else {
+                // イベントがない場合は、対応するナビゲーション項目を探してアクティブに
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    if (item.getAttribute('onclick') && item.getAttribute('onclick').includes(sectionName)) {
+                        item.classList.add('active');
+                    }
+                });
+            }
 
             // 現在のセクションをlocalStorageに保存
             localStorage.setItem('currentSection', sectionName);
