@@ -118,22 +118,9 @@ const authAPI = {
         return false;
       }
 
-      // 管理者権限の確認
-      if (user.role === 'admin') {
-        // サーバーに最新の権限を確認（オプション）
-        try {
-          const response = await apiClient.get(API_ENDPOINTS.auth.me);
-          if (response.success && response.data) {
-            apiClient.setUser(response.data);
-            return response.data.role === 'admin';
-          }
-        } catch (error) {
-          // エラーが発生してもローカル情報を信用
-          return user.role === 'admin';
-        }
-      }
-
-      return false;
+      // 管理者権限の確認（ローカル情報のみ使用）
+      // サーバー確認を無効化して無限ループを防ぐ
+      return user.role === 'admin';
     } catch (error) {
       console.error('Admin check error:', error);
       return false;
@@ -242,13 +229,17 @@ const authAPI = {
       try {
         const isAdmin = await this.isAdmin();
         if (!isAdmin) {
-          alert('管理者権限が必要です');
-          this.logout();
+          console.warn('Admin permission required');
+          // logout()を呼ぶと無限ループになるため、トークンを削除してリダイレクト
+          apiClient.removeToken();
+          window.location.href = '/login.html';
           return false;
         }
       } catch (error) {
         console.error('Admin check failed:', error);
-        this.logout();
+        // logout()を呼ぶと無限ループになるため、トークンを削除してリダイレクト
+        this.removeToken();
+        window.location.href = '/login.html';
         return false;
       }
     }

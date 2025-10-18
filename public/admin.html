@@ -986,6 +986,7 @@
                 showNotification('ログインが必要です', 'error');
                 setTimeout(() => {
                     sessionStorage.removeItem('redirectCount'); // 正常なリダイレクトの場合はカウントをリセット
+                    sessionStorage.setItem('redirectFromAdmin', 'true'); // admin.html からのリダイレクトを記録
                     window.location.href = '/login.html';
                 }, 1500);
                 return;
@@ -999,8 +1000,11 @@
                 const isAdmin = await authAPI.isAdmin();
                 if (!isAdmin) {
                     showNotification('管理者権限が必要です', 'error');
-                    setTimeout(async () => {
-                        await authAPI.logout();
+                    sessionStorage.removeItem('redirectCount');
+                    sessionStorage.setItem('redirectFromAdmin', 'true'); // admin.html からのリダイレクトを記録
+                    setTimeout(() => {
+                        // logout()ではなく、トークンを削除してリダイレクト
+                        apiClient.removeToken();
                         window.location.href = '/login.html';
                     }, 1500);
                     return;
@@ -1008,7 +1012,11 @@
             } catch (error) {
                 console.error('権限確認エラー:', error);
                 showNotification('権限の確認に失敗しました', 'error');
+                sessionStorage.removeItem('redirectCount');
+                sessionStorage.setItem('redirectFromAdmin', 'true'); // admin.html からのリダイレクトを記録
                 setTimeout(() => {
+                    // logout()ではなく、トークンを削除してリダイレクト
+                    apiClient.removeToken();
                     window.location.href = '/login.html';
                 }, 1500);
                 return;

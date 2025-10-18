@@ -328,13 +328,24 @@
 
         // 既存ユーザーのリダイレクト
         async function checkAndRedirect() {
+            // 無限リダイレクト防止のチェック
+            const redirectFromAdmin = sessionStorage.getItem('redirectFromAdmin') === 'true';
+            if (redirectFromAdmin) {
+                // admin.html から来た場合はリダイレクトしない
+                sessionStorage.removeItem('redirectFromAdmin');
+                return;
+            }
+
             try {
-                const isAdmin = await authAPI.isAdmin();
-                if (isAdmin) {
-                    showMessage('success', '既にログイン済みです。ダッシュボードへ移動します...');
-                    setTimeout(() => {
-                        window.location.href = '/admin.html';
-                    }, 1000);
+                // トークンが存在し、かつ管理者権限がある場合のみリダイレクト
+                if (authAPI.isAuthenticated()) {
+                    const isAdmin = await authAPI.isAdmin();
+                    if (isAdmin) {
+                        showMessage('success', '既にログイン済みです。ダッシュボードへ移動します...');
+                        setTimeout(() => {
+                            window.location.href = '/admin.html';
+                        }, 1000);
+                    }
                 }
             } catch (error) {
                 // トークンが無効な場合は何もしない
