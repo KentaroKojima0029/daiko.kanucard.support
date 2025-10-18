@@ -984,7 +984,7 @@
                 const isAdmin = await authAPI.isAdmin();
                 if (!isAdmin) {
                     showNotification('管理者権限が必要です', 'error');
-                    setTimeout(() => {
+                    setTimeout(async () => {
                         await authAPI.logout();
                         window.location.href = '/login.html';
                     }, 1500);
