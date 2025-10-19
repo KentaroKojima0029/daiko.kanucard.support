@@ -899,6 +899,119 @@ app.get('/api/admin/logs', authenticateToken, (req, res) => {
     }
 });
 
+// 11. フォーム申請管理API（管理者用）
+// すべてのフォーム申請を取得
+app.get('/api/admin/form-submissions', authenticateToken, (req, res) => {
+    try {
+        const submissions = dbService.getAllPSARequests();
+
+        // ユーザー情報を含めて返却
+        const submissionsWithUsers = submissions.map(submission => {
+            const user = dbService.getUserById(submission.user_id);
+            return {
+                ...submission,
+                user: user ? {
+                    name: user.name,
+                    email: user.email,
+                    phone: user.phone
+                } : null
+            };
+        });
+
+        res.json({
+            success: true,
+            data: submissionsWithUsers
+        });
+    } catch (error) {
+        console.error('Error fetching form submissions:', error);
+        res.status(500).json({
+            success: false,
+            error: 'フォーム申請の取得に失敗しました'
+        });
+    }
+});
+
+// 特定のフォーム申請の詳細を取得
+app.get('/api/admin/form-submission/:id', authenticateToken, (req, res) => {
+    try {
+        const { id } = req.params;
+        const submission = dbService.getPSARequestById(id);
+
+        if (!submission) {
+            return res.status(404).json({
+                success: false,
+                error: '申請が見つかりません'
+            });
+        }
+
+        // ユーザー情報を追加
+        const user = dbService.getUserById(submission.user_id);
+        const submissionWithUser = {
+            ...submission,
+            user: user ? {
+                name: user.name,
+                email: user.email,
+                phone: user.phone
+            } : null
+        };
+
+        res.json({
+            success: true,
+            data: submissionWithUser
+        });
+    } catch (error) {
+        console.error('Error fetching form submission:', error);
+        res.status(500).json({
+            success: false,
+            error: '申請の取得に失敗しました'
+        });
+    }
+});
+
+// フォーム申請のステータスを更新
+app.put('/api/admin/form-submission/:id/status', authenticateToken, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, adminNotes } = req.body;
+
+        if (!status) {
+            return res.status(400).json({
+                success: false,
+                error: 'ステータスが指定されていません'
+            });
+        }
+
+        const updatedSubmission = dbService.updatePSARequestStatus(id, status, adminNotes);
+
+        if (!updatedSubmission) {
+            return res.status(404).json({
+                success: false,
+                error: '申請が見つかりません'
+            });
+        }
+
+        // 管理者ログに記録
+        dbService.logAdminAction({
+            adminUser: req.user.email,
+            action: 'update_form_submission_status',
+            targetRequestId: id,
+            details: JSON.stringify({ status, adminNotes })
+        });
+
+        res.json({
+            success: true,
+            data: updatedSubmission,
+            message: 'ステータスを更新しました'
+        });
+    } catch (error) {
+        console.error('Error updating form submission status:', error);
+        res.status(500).json({
+            success: false,
+            error: 'ステータスの更新に失敗しました'
+        });
+    }
+});
+
 // メール送信関数
 async function sendMessageEmail(message, toEmail) {
     const mailOptions = {
