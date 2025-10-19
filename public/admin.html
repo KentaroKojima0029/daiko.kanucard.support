@@ -580,6 +580,69 @@
             cursor: pointer;
             margin: 15px 0;
         }
+        /* Shopify顧客管理用スタイル */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        }
+
+        .stat-icon {
+            width: 45px;
+            height: 45px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .stat-card .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-card .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+            text-transform: none;
+        }
+
+        /* テーブルの調整 */
+        #shopifyCustomersTable {
+            margin-top: 0;
+        }
+
+        #shopifyCustomersTable thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        #shopifyCustomersTable thead th {
+            color: white;
+            font-weight: 600;
+            padding: 1rem;
+        }
+
+        #shopifyCustomersTable tbody tr:hover {
+            background: #f7fafc;
+        }
     </style>
 </head>
 <body>
@@ -632,7 +695,7 @@
                 <span>代行申込管理</span>
                 <span class="badge" id="applicationsBadge" style="display: none;">0</span>
             </div>
-            <div class="nav-item" onclick="window.location.href='/customers.html'">
+            <div class="nav-item" onclick="showSection('customers', event)">
                 <i>👥</i>
                 <span>Shopify顧客管理</span>
             </div>
@@ -969,6 +1032,104 @@
 
                 <div style="text-align: center; margin-top: 20px;">
                     <button class="btn btn-primary" onclick="updateSchedule()">スケジュールを更新</button>
+                </div>
+            </div>
+
+            <!-- 顧客管理セクション -->
+            <div id="customers-section" class="section" style="display: none;">
+                <div class="content-header">
+                    <h2 class="content-title">Shopify顧客一覧</h2>
+                    <button class="btn btn-primary" onclick="refreshCustomers()">
+                        <i>🔄</i> 更新
+                    </button>
+                </div>
+
+                <!-- 統計カード -->
+                <div class="stats-grid" style="margin-bottom: 2rem;">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: rgba(102, 126, 234, 0.1); color: #667eea;">
+                            <i>👥</i>
+                        </div>
+                        <div class="stat-value" id="totalShopifyCustomers">0</div>
+                        <div class="stat-label">総顧客数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: rgba(52, 211, 153, 0.1); color: #34d399;">
+                            <i>🛒</i>
+                        </div>
+                        <div class="stat-value" id="totalShopifyOrders">0</div>
+                        <div class="stat-label">総注文数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: rgba(251, 146, 60, 0.1); color: #fb923c;">
+                            <i>💴</i>
+                        </div>
+                        <div class="stat-value" id="totalShopifyRevenue">¥0</div>
+                        <div class="stat-label">総売上</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: rgba(147, 51, 234, 0.1); color: #9333ea;">
+                            <i>📈</i>
+                        </div>
+                        <div class="stat-value" id="activeShopifyCustomers">0</div>
+                        <div class="stat-label">アクティブ顧客</div>
+                    </div>
+                </div>
+
+                <!-- 検索・フィルター -->
+                <div class="card" style="margin-bottom: 1.5rem;">
+                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 250px; position: relative;">
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="shopifySearchInput"
+                                placeholder="顧客名またはメールアドレスで検索..."
+                                oninput="handleShopifySearch()"
+                                style="padding-left: 2.5rem;"
+                            >
+                            <span style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #9ca3af;">
+                                🔍
+                            </span>
+                        </div>
+                        <select class="form-control" id="shopifySortSelect" onchange="handleShopifySort()" style="width: auto;">
+                            <option value="name">名前順</option>
+                            <option value="email">メール順</option>
+                            <option value="orders">注文数順</option>
+                            <option value="spent">購入額順</option>
+                            <option value="date">登録日順</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- テーブル -->
+                <div class="card">
+                    <div class="table-responsive">
+                        <table class="table" id="shopifyCustomersTable">
+                            <thead>
+                                <tr>
+                                    <th>顧客名</th>
+                                    <th>メールアドレス</th>
+                                    <th>電話番号</th>
+                                    <th>注文数</th>
+                                    <th>総購入額</th>
+                                    <th>登録日</th>
+                                    <th>ステータス</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="shopifyCustomersTableBody">
+                                <tr>
+                                    <td colspan="8" class="text-center">
+                                        <div class="spinner-border spinner-border-sm" role="status">
+                                            <span class="sr-only">読み込み中...</span>
+                                        </div>
+                                        顧客データを読み込んでいます...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1796,6 +1957,8 @@
             // データを更新
             if (sectionName === 'dashboard') {
                 updateDashboard();
+            } else if (sectionName === 'customers') {
+                loadShopifyCustomers();
             }
         }
 
@@ -2462,13 +2625,188 @@
             }
         }
 
+        // Shopify顧客データ管理
+        let allShopifyCustomers = [];
+        let filteredShopifyCustomers = [];
+        let currentShopifySort = 'name';
+        const SHOPIFY_CACHE_KEY = 'shopify_customers_cache';
+        const SHOPIFY_CACHE_DURATION = 5 * 60 * 1000; // 5分
+
+        // Shopify顧客データ読み込み
+        async function loadShopifyCustomers(showLoader = true) {
+            if (showLoader) {
+                document.getElementById('shopifyCustomersTableBody').innerHTML = `
+                    <tr>
+                        <td colspan="8" class="text-center">
+                            <div class="spinner-border spinner-border-sm" role="status">
+                                <span class="sr-only">読み込み中...</span>
+                            </div>
+                            顧客データを読み込んでいます...
+                        </td>
+                    </tr>
+                `;
+            }
+
+            try {
+                const token = localStorage.getItem('kanucard_admin_token');
+                const response = await fetch('/api/shopify/customers', {
+                    headers: {
+                        'Authorization': token ? `Bearer ${token}` : '',
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success && data.data) {
+                    allShopifyCustomers = data.data.customers || [];
+                    filteredShopifyCustomers = [...allShopifyCustomers];
+
+                    // キャッシュに保存
+                    localStorage.setItem(SHOPIFY_CACHE_KEY, JSON.stringify({
+                        customers: allShopifyCustomers,
+                        timestamp: Date.now()
+                    }));
+
+                    updateShopifyStats();
+                    renderShopifyTable();
+                } else {
+                    throw new Error(data.message || '顧客データの取得に失敗しました');
+                }
+            } catch (error) {
+                console.error('Shopify顧客データ読み込みエラー:', error);
+                document.getElementById('shopifyCustomersTableBody').innerHTML = `
+                    <tr>
+                        <td colspan="8" class="text-center text-danger">
+                            顧客データの読み込みに失敗しました
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        // Shopify統計情報更新
+        function updateShopifyStats() {
+            document.getElementById('totalShopifyCustomers').textContent = allShopifyCustomers.length.toLocaleString();
+
+            const totalOrders = allShopifyCustomers.reduce((sum, c) => sum + (c.ordersCount || 0), 0);
+            document.getElementById('totalShopifyOrders').textContent = totalOrders.toLocaleString();
+
+            const totalRevenue = allShopifyCustomers.reduce((sum, c) => sum + (parseFloat(c.totalSpent) || 0), 0);
+            document.getElementById('totalShopifyRevenue').textContent = '¥' + Math.floor(totalRevenue).toLocaleString();
+
+            const activeCustomers = allShopifyCustomers.filter(c => c.ordersCount > 0).length;
+            document.getElementById('activeShopifyCustomers').textContent = activeCustomers.toLocaleString();
+        }
+
+        // Shopifyテーブル描画
+        function renderShopifyTable() {
+            const tbody = document.getElementById('shopifyCustomersTableBody');
+
+            if (filteredShopifyCustomers.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="text-center">顧客データがありません</td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = filteredShopifyCustomers.map(customer => `
+                <tr>
+                    <td><strong>${customer.fullName || '-'}</strong></td>
+                    <td>
+                        <a href="mailto:${customer.email}" style="color: #667eea;">
+                            ${customer.email || '-'}
+                        </a>
+                    </td>
+                    <td>${customer.phone || '-'}</td>
+                    <td>${customer.ordersCount || 0}</td>
+                    <td>¥${parseFloat(customer.totalSpent || 0).toLocaleString()}</td>
+                    <td>${customer.createdAt ? new Date(customer.createdAt).toLocaleDateString('ja-JP') : '-'}</td>
+                    <td>
+                        <span class="badge ${customer.state === 'enabled' ? 'badge-success' : 'badge-secondary'}">
+                            ${customer.state === 'enabled' ? 'アクティブ' : '無効'}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="viewShopifyCustomerDetail('${customer.id}', '${(customer.email || '').replace(/'/g, "\\'")}')">
+                            詳細
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Shopify顧客検索
+        function handleShopifySearch() {
+            const query = document.getElementById('shopifySearchInput').value.toLowerCase();
+
+            if (!query) {
+                filteredShopifyCustomers = [...allShopifyCustomers];
+            } else {
+                filteredShopifyCustomers = allShopifyCustomers.filter(customer => {
+                    const name = (customer.fullName || '').toLowerCase();
+                    const email = (customer.email || '').toLowerCase();
+                    return name.includes(query) || email.includes(query);
+                });
+            }
+
+            renderShopifyTable();
+        }
+
+        // Shopify顧客ソート
+        function handleShopifySort() {
+            const sortBy = document.getElementById('shopifySortSelect').value;
+            currentShopifySort = sortBy;
+
+            filteredShopifyCustomers.sort((a, b) => {
+                switch (sortBy) {
+                    case 'name':
+                        return (a.fullName || '').localeCompare(b.fullName || '');
+                    case 'email':
+                        return (a.email || '').localeCompare(b.email || '');
+                    case 'orders':
+                        return (b.ordersCount || 0) - (a.ordersCount || 0);
+                    case 'spent':
+                        return (parseFloat(b.totalSpent) || 0) - (parseFloat(a.totalSpent) || 0);
+                    case 'date':
+                        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+                    default:
+                        return 0;
+                }
+            });
+
+            renderShopifyTable();
+        }
+
+        // Shopify顧客詳細表示
+        function viewShopifyCustomerDetail(customerId, email) {
+            // モーダルで詳細を表示
+            openModal('顧客詳細', `
+                <div>
+                    <p><strong>顧客ID:</strong> ${customerId}</p>
+                    <p><strong>メールアドレス:</strong> ${email}</p>
+                    <div style="text-align: center; margin-top: 20px;">
+                        <a href="/customer-detail.html?email=${encodeURIComponent(email)}" target="_blank" class="btn btn-primary">
+                            詳細ページへ
+                        </a>
+                    </div>
+                </div>
+            `);
+        }
+
+        // Shopify顧客データ更新
+        function refreshCustomers() {
+            loadShopifyCustomers(true);
+        }
+
         // 顧客のShopify履歴を表示
         function viewCustomerHistory(email) {
             if (!email) {
                 alert('顧客のメールアドレスが指定されていません');
                 return;
             }
-            window.location.href = `/customer-detail.html?email=${encodeURIComponent(email)}`;
+            viewShopifyCustomerDetail('', email);
         }
 
         // 画面外クリックでモーダルを閉じる
