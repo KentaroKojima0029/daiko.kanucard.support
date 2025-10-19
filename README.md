@@ -107,14 +107,14 @@ NODE_ENV=production
 JWT_SECRET=your-secure-random-string
 
 # Admin
-ADMIN_EMAIL=collection@kanucard.com
+ADMIN_EMAIL=contact@kanucard.com
 ADMIN_PASSWORD=your-secure-password
 
 # SMTP (Xserver)
 SMTP_HOST=sv10210.xserver.jp
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER=collection@kanucard.com
+SMTP_USER=contact@kanucard.com
 SMTP_PASS=your-smtp-password
 
 # FTP (Xserver)

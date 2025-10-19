@@ -64,7 +64,7 @@ const transporter = nodemailer.createTransport({
     port: parseInt(process.env.SMTP_PORT) || 587,
     secure: process.env.SMTP_SECURE === 'true',
     auth: {
-        user: process.env.SMTP_USER || 'collection@kanucard.com',
+        user: process.env.SMTP_USER || 'contact@kanucard.com',
         pass: process.env.SMTP_PASS
     }
 });
@@ -163,7 +163,7 @@ let dataStore = {
 function authenticateToken(req, res, next) {
     req.user = {
         id: 'admin',
-        email: 'collection@kanucard.com',
+        email: 'contact@kanucard.com',
         role: 'admin'
     };
     next();
@@ -487,7 +487,7 @@ app.get('/api/public/application/:id/progress', (req, res) => {
 // メール送信関数
 async function sendMessageEmail(message, toEmail) {
     const mailOptions = {
-        from: `PSA代行サービス <${process.env.SMTP_USER || 'collection@kanucard.com'}>`,
+        from: `PSA代行サービス <${process.env.SMTP_USER || 'contact@kanucard.com'}>`,
         to: toEmail,
         subject: 'PSA代行サービスからのメッセージ',
         html: `
@@ -516,7 +516,7 @@ async function sendApprovalEmail(approval) {
     const approvalUrl = `https://daiko.kanucard.com/approval/${approval.approvalKey}`;
 
     const mailOptions = {
-        from: `PSA代行サービス <${process.env.SMTP_USER || 'collection@kanucard.com'}>`,
+        from: `PSA代行サービス <${process.env.SMTP_USER || 'contact@kanucard.com'}>`,
         to: approval.customerEmail,
         subject: `【PSA代行】買取承認のお願い - ${approval.customerName}様`,
         html: `
