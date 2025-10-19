@@ -8,6 +8,7 @@ const fs = require('fs');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
+const axios = require('axios');
 
 // データベースサービスのインポート
 const dbService = require('./services/database-service');
@@ -55,31 +56,23 @@ const transporter = nodemailer.createTransport({
 
 // 認証ミドルウェア（JWT認証）
 function authenticateToken(req, res, next) {
-    // 開発環境では認証をスキップ
-    if (process.env.NODE_ENV === 'development') {
-        req.user = {
-            id: 'admin',
-            email: 'collection@kanucard.com',
-            role: 'admin'
-        };
-        return next();
-    }
-
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
     if (token == null) {
-        // トークンがない場合はデフォルト管理者として処理
-        req.user = {
-            id: 'admin',
-            email: 'collection@kanucard.com',
-            role: 'admin'
-        };
-        return next();
+        return res.status(401).json({
+            success: false,
+            message: '認証が必要です。ログインしてください。'
+        });
     }
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.sendStatus(403);
+        if (err) {
+            return res.status(403).json({
+                success: false,
+                message: 'トークンが無効です。再度ログインしてください。'
+            });
+        }
         req.user = user;
         next();
     });
@@ -110,6 +103,111 @@ function logAdminAction(action) {
 }
 
 // ===== APIエンドポイント =====
+
+// 0. 認証エンドポイント
+// ログインエンドポイント
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { email, password, username } = req.body;
+
+        // ユーザー名またはメールアドレスでログインを許可
+        const loginId = email || username;
+
+        // 環境変数から認証情報を取得
+        const validEmail = process.env.ADMIN_EMAIL || 'collection@kanucard.com';
+        const validPassword = process.env.ADMIN_PASSWORD || '#collection30';
+
+        // 認証チェック（ユーザー名 'admin' またはメールアドレスでログイン可能）
+        if ((loginId === 'admin' || loginId === validEmail) && password === validPassword) {
+            const user = {
+                id: 1,
+                email: validEmail,
+                username: 'admin',
+                role: 'admin'
+            };
+
+            // JWTトークン生成
+            const token = jwt.sign(user, JWT_SECRET, { expiresIn: '24h' });
+            const refreshToken = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
+
+            res.json({
+                success: true,
+                data: {
+                    token,
+                    refreshToken,
+                    user
+                }
+            });
+        } else {
+            res.status(401).json({
+                success: false,
+                message: 'メールアドレスまたはパスワードが正しくありません'
+            });
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'ログイン処理中にエラーが発生しました'
+        });
+    }
+});
+
+// ログアウトエンドポイント
+app.post('/api/auth/logout', authenticateToken, (req, res) => {
+    // JWTはステートレスなので、クライアント側でトークンを削除すれば良い
+    res.json({
+        success: true,
+        message: 'ログアウトしました'
+    });
+});
+
+// 現在のユーザー情報取得
+app.get('/api/auth/me', authenticateToken, (req, res) => {
+    res.json({
+        success: true,
+        data: req.user
+    });
+});
+
+// トークンリフレッシュ
+app.post('/api/auth/refresh', (req, res) => {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+        return res.status(401).json({
+            success: false,
+            message: 'リフレッシュトークンが必要です'
+        });
+    }
+
+    jwt.verify(refreshToken, JWT_SECRET, (err, user) => {
+        if (err) {
+            return res.status(403).json({
+                success: false,
+                message: 'リフレッシュトークンが無効です'
+            });
+        }
+
+        const newUser = {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            role: user.role
+        };
+
+        const token = jwt.sign(newUser, JWT_SECRET, { expiresIn: '24h' });
+        const newRefreshToken = jwt.sign(newUser, JWT_SECRET, { expiresIn: '7d' });
+
+        res.json({
+            success: true,
+            data: {
+                token,
+                refreshToken: newRefreshToken
+            }
+        });
+    });
+});
 
 // 1. ユーザー管理
 app.get('/api/users', authenticateToken, (req, res) => {
@@ -913,127 +1011,183 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
     });
 });
 
-// Shopify API エンドポイント（モック実装）
-// 顧客一覧取得（高速化版）
-app.get('/api/shopify/customers', authenticateToken, (req, res) => {
+// Shopify API エンドポイント
+// 顧客一覧取得（実際のShopifyデータ）
+app.get('/api/shopify/customers', authenticateToken, async (req, res) => {
     // キャッシュヘッダーを設定（ブラウザキャッシュ1分）
     res.setHeader('Cache-Control', 'public, max-age=60');
 
     try {
-        // モックの顧客データを即座に返す
-        const mockCustomers = [
-            {
-                id: '1',
-                email: 'tanaka@example.com',
-                firstName: '太郎',
-                lastName: '田中',
-                fullName: '田中 太郎',
-                phone: '090-1234-5678',
-                ordersCount: 5,
-                totalSpent: '50000',
-                createdAt: '2024-01-15T10:00:00Z',
-                address: {
-                    address1: '東京都渋谷区',
-                    city: '渋谷',
-                    province: '東京都',
-                    country: '日本',
-                    zip: '150-0001'
-                }
+        const shopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
+        const accessToken = process.env.SHOPIFY_ADMIN_API_KEY;
+        const apiVersion = process.env.SHOPIFY_API_VERSION || '2024-10';
+
+        if (!shopifyDomain || !accessToken) {
+            throw new Error('Shopify設定が不足しています');
+        }
+
+        // Shopify Admin API URLを構築
+        const apiUrl = `https://${shopifyDomain}/admin/api/${apiVersion}/customers.json`;
+
+        // Shopify APIから顧客データを取得
+        const response = await axios.get(apiUrl, {
+            headers: {
+                'X-Shopify-Access-Token': accessToken,
+                'Content-Type': 'application/json'
             },
-            {
-                id: '2',
-                email: 'suzuki@example.com',
-                firstName: '花子',
-                lastName: '鈴木',
-                fullName: '鈴木 花子',
-                phone: '080-9876-5432',
-                ordersCount: 3,
-                totalSpent: '30000',
-                createdAt: '2024-02-20T14:30:00Z',
-                address: {
-                    address1: '大阪府大阪市北区',
-                    city: '大阪',
-                    province: '大阪府',
-                    country: '日本',
-                    zip: '530-0001'
-                }
-            },
-            {
-                id: '3',
-                email: 'yamada@example.com',
-                firstName: '一郎',
-                lastName: '山田',
-                fullName: '山田 一郎',
-                phone: '070-2468-1357',
-                ordersCount: 0,
-                totalSpent: '0',
-                createdAt: '2024-03-10T09:15:00Z',
-                address: null
+            params: {
+                limit: 250, // 最大250件まで取得
+                fields: 'id,email,first_name,last_name,phone,orders_count,total_spent,created_at,default_address,state'
             }
-        ];
+        });
+
+        // Shopifyのデータを整形
+        const customers = response.data.customers.map(customer => ({
+            id: customer.id,
+            email: customer.email || '',
+            firstName: customer.first_name || '',
+            lastName: customer.last_name || '',
+            fullName: `${customer.last_name || ''} ${customer.first_name || ''}`.trim(),
+            phone: customer.phone || '',
+            ordersCount: customer.orders_count || 0,
+            totalSpent: customer.total_spent || '0',
+            createdAt: customer.created_at,
+            state: customer.state || 'enabled',
+            address: customer.default_address ? {
+                address1: customer.default_address.address1 || '',
+                address2: customer.default_address.address2 || '',
+                city: customer.default_address.city || '',
+                province: customer.default_address.province || '',
+                country: customer.default_address.country || '',
+                zip: customer.default_address.zip || '',
+                phone: customer.default_address.phone || ''
+            } : null
+        }));
 
         res.json({
             success: true,
             data: {
-                customers: mockCustomers,
-                total: mockCustomers.length
+                customers: customers,
+                total: customers.length
             }
         });
     } catch (error) {
-        console.error('Error fetching customers:', error);
+        console.error('Error fetching Shopify customers:', error);
+
+        // エラーの詳細をログに記録
+        if (error.response) {
+            console.error('Shopify API Error:', error.response.data);
+            console.error('Status:', error.response.status);
+        }
+
         res.status(500).json({
             success: false,
-            message: '顧客データの取得に失敗しました'
+            message: 'Shopify顧客データの取得に失敗しました',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 });
 
 // 顧客詳細取得（メールアドレスまたはIDで取得）
-app.get('/api/shopify/customer', authenticateToken, (req, res) => {
+app.get('/api/shopify/customer', authenticateToken, async (req, res) => {
     try {
-        const { email } = req.query;
+        const { email, id } = req.query;
+        const shopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
+        const accessToken = process.env.SHOPIFY_ADMIN_API_KEY;
+        const apiVersion = process.env.SHOPIFY_API_VERSION || '2024-10';
 
-        // モックの顧客データ
-        const mockCustomer = {
-            id: '1',
-            email: email || 'customer@example.com',
-            firstName: '太郎',
-            lastName: '田中',
-            fullName: '田中 太郎',
-            phone: '090-1234-5678',
-            ordersCount: 5,
-            totalSpent: '50000',
-            createdAt: '2024-01-15T10:00:00Z',
-            address: {
-                address1: '東京都渋谷区',
-                city: '渋谷',
-                province: '東京都',
-                country: '日本',
-                zip: '150-0001'
-            },
-            orders: [
-                {
-                    id: 'ORDER-001',
-                    name: '#1001',
-                    createdAt: '2024-03-01T10:00:00Z',
-                    totalPrice: '15000',
-                    lineItems: [
-                        {
-                            title: 'PSA鑑定代行サービス',
-                            quantity: 1,
-                            price: '15000'
-                        }
-                    ]
+        if (!shopifyDomain || !accessToken) {
+            throw new Error('Shopify設定が不足しています');
+        }
+
+        let customerData = null;
+
+        // メールアドレスまたはIDで顧客を検索
+        if (email) {
+            const searchUrl = `https://${shopifyDomain}/admin/api/${apiVersion}/customers/search.json?query=email:${encodeURIComponent(email)}`;
+            const searchResponse = await axios.get(searchUrl, {
+                headers: {
+                    'X-Shopify-Access-Token': accessToken,
+                    'Content-Type': 'application/json'
                 }
-            ]
+            });
+
+            if (searchResponse.data.customers && searchResponse.data.customers.length > 0) {
+                customerData = searchResponse.data.customers[0];
+            }
+        } else if (id) {
+            const customerUrl = `https://${shopifyDomain}/admin/api/${apiVersion}/customers/${id}.json`;
+            const customerResponse = await axios.get(customerUrl, {
+                headers: {
+                    'X-Shopify-Access-Token': accessToken,
+                    'Content-Type': 'application/json'
+                }
+            });
+            customerData = customerResponse.data.customer;
+        }
+
+        if (!customerData) {
+            return res.status(404).json({
+                success: false,
+                message: '顧客が見つかりません'
+            });
+        }
+
+        // 顧客の注文履歴を取得
+        const ordersUrl = `https://${shopifyDomain}/admin/api/${apiVersion}/customers/${customerData.id}/orders.json`;
+        const ordersResponse = await axios.get(ordersUrl, {
+            headers: {
+                'X-Shopify-Access-Token': accessToken,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        // データを整形
+        const formattedCustomer = {
+            id: customerData.id,
+            email: customerData.email || '',
+            firstName: customerData.first_name || '',
+            lastName: customerData.last_name || '',
+            fullName: `${customerData.last_name || ''} ${customerData.first_name || ''}`.trim(),
+            phone: customerData.phone || '',
+            ordersCount: customerData.orders_count || 0,
+            totalSpent: customerData.total_spent || '0',
+            createdAt: customerData.created_at,
+            address: customerData.default_address ? {
+                address1: customerData.default_address.address1 || '',
+                address2: customerData.default_address.address2 || '',
+                city: customerData.default_address.city || '',
+                province: customerData.default_address.province || '',
+                country: customerData.default_address.country || '',
+                zip: customerData.default_address.zip || '',
+                phone: customerData.default_address.phone || ''
+            } : null,
+            orders: ordersResponse.data.orders.map(order => ({
+                id: order.id,
+                name: order.name,
+                createdAt: order.created_at,
+                totalPrice: order.total_price,
+                financialStatus: order.financial_status,
+                fulfillmentStatus: order.fulfillment_status,
+                lineItems: order.line_items.map(item => ({
+                    title: item.title,
+                    quantity: item.quantity,
+                    price: item.price
+                }))
+            }))
         };
 
         res.json({
             success: true,
-            data: mockCustomer
+            data: formattedCustomer
         });
     } catch (error) {
         console.error('Error fetching customer detail:', error);
+
+        if (error.response) {
+            console.error('Shopify API Error:', error.response.data);
+        }
+
         res.status(500).json({
             success: false,
             message: '顧客詳細の取得に失敗しました'
@@ -1042,51 +1196,84 @@ app.get('/api/shopify/customer', authenticateToken, (req, res) => {
 });
 
 // 顧客詳細取得（ID指定）
-app.get('/api/shopify/customer/:id', authenticateToken, (req, res) => {
+app.get('/api/shopify/customer/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
+        const shopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
+        const accessToken = process.env.SHOPIFY_ADMIN_API_KEY;
+        const apiVersion = process.env.SHOPIFY_API_VERSION || '2024-10';
 
-        // モックの顧客データ
-        const mockCustomer = {
-            id: id,
-            email: 'customer@example.com',
-            firstName: '太郎',
-            lastName: '田中',
-            fullName: '田中 太郎',
-            phone: '090-1234-5678',
-            ordersCount: 5,
-            totalSpent: '50000',
-            createdAt: '2024-01-15T10:00:00Z',
-            address: {
-                address1: '東京都渋谷区',
-                city: '渋谷',
-                province: '東京都',
-                country: '日本',
-                zip: '150-0001'
-            },
-            orders: [
-                {
-                    id: 'ORDER-001',
-                    name: '#1001',
-                    createdAt: '2024-03-01T10:00:00Z',
-                    totalPrice: '15000',
-                    lineItems: [
-                        {
-                            title: 'PSA鑑定代行サービス',
-                            quantity: 1,
-                            price: '15000'
-                        }
-                    ]
-                }
-            ]
+        if (!shopifyDomain || !accessToken) {
+            throw new Error('Shopify設定が不足しています');
+        }
+
+        // IDで顧客データを取得
+        const customerUrl = `https://${shopifyDomain}/admin/api/${apiVersion}/customers/${id}.json`;
+        const customerResponse = await axios.get(customerUrl, {
+            headers: {
+                'X-Shopify-Access-Token': accessToken,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const customerData = customerResponse.data.customer;
+
+        // 顧客の注文履歴を取得
+        const ordersUrl = `https://${shopifyDomain}/admin/api/${apiVersion}/customers/${customerData.id}/orders.json`;
+        const ordersResponse = await axios.get(ordersUrl, {
+            headers: {
+                'X-Shopify-Access-Token': accessToken,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        // データを整形
+        const formattedCustomer = {
+            id: customerData.id,
+            email: customerData.email || '',
+            firstName: customerData.first_name || '',
+            lastName: customerData.last_name || '',
+            fullName: `${customerData.last_name || ''} ${customerData.first_name || ''}`.trim(),
+            phone: customerData.phone || '',
+            ordersCount: customerData.orders_count || 0,
+            totalSpent: customerData.total_spent || '0',
+            createdAt: customerData.created_at,
+            address: customerData.default_address ? {
+                address1: customerData.default_address.address1 || '',
+                address2: customerData.default_address.address2 || '',
+                city: customerData.default_address.city || '',
+                province: customerData.default_address.province || '',
+                country: customerData.default_address.country || '',
+                zip: customerData.default_address.zip || '',
+                phone: customerData.default_address.phone || ''
+            } : null,
+            orders: ordersResponse.data.orders.map(order => ({
+                id: order.id,
+                name: order.name,
+                createdAt: order.created_at,
+                totalPrice: order.total_price,
+                financialStatus: order.financial_status,
+                fulfillmentStatus: order.fulfillment_status,
+                lineItems: order.line_items.map(item => ({
+                    title: item.title,
+                    quantity: item.quantity,
+                    price: item.price
+                }))
+            }))
         };
 
         res.json({
             success: true,
-            data: mockCustomer
+            data: formattedCustomer
         });
     } catch (error) {
         console.error('Error fetching customer by ID:', error);
+
+        if (error.response) {
+            console.error('Shopify API Error:', error.response.data);
+            console.error('Status:', error.response.status);
+        }
+
         res.status(500).json({
             success: false,
             message: '顧客詳細の取得に失敗しました'

@@ -554,10 +554,10 @@
             }
 
             // キャッシュからデータを先に表示
-            displayCachedData();
+            const hasCachedData = displayCachedData();
 
-            // バックグラウンドで最新データを取得
-            loadCustomers();
+            // 常に最新データを取得（キャッシュがある場合は背景で、ない場合はローダー表示）
+            await loadCustomers(!hasCachedData);
         });
 
         // キャッシュデータの表示

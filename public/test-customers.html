@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>顧客データテスト</title>
+    <script src="/js/api-config.js"></script>
+    <script src="/js/api-client.js"></script>
+    <script src="/js/api-auth.js"></script>
+</head>
+<body>
+    <h1>顧客データ取得テスト</h1>
+    <button id="loginBtn">ログイン</button>
+    <button id="fetchBtn" disabled>顧客データ取得</button>
+    <pre id="output"></pre>
+
+    <script>
+        const output = document.getElementById('output');
+
+        // ログインボタンクリック
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            output.textContent = 'ログイン中...';
+            try {
+                // usernameとpasswordでログイン
+                const loginResponse = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: '#collection30'
+                    })
+                });
+
+                const loginData = await loginResponse.json();
+                output.textContent = 'ログイン結果:\n' + JSON.stringify(loginData, null, 2);
+
+                if (loginData.success) {
+                    // トークンを保存
+                    localStorage.setItem('kanucard_admin_token', loginData.data.token);
+                    localStorage.setItem('kanucard_user_data', JSON.stringify(loginData.data.user));
+                    document.getElementById('fetchBtn').disabled = false;
+                    output.textContent += '\n\n✅ ログイン成功！顧客データ取得ボタンを押してください';
+                }
+            } catch (error) {
+                output.textContent = 'ログインエラー: ' + error.message;
+            }
+        });
+
+        // 顧客データ取得ボタンクリック
+        document.getElementById('fetchBtn').addEventListener('click', async () => {
+            output.textContent = '顧客データ取得中...';
+            try {
+                const token = localStorage.getItem('kanucard_admin_token');
+                if (!token) {
+                    throw new Error('トークンがありません');
+                }
+
+                const response = await fetch('/api/shopify/customers', {
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    }
+                });
+
+                const data = await response.json();
+                output.textContent = '顧客データ:\n' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                output.textContent = '取得エラー: ' + error.message;
+            }
+        });
+
+        // ページ読み込み時にトークンの有無を確認
+        window.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('kanucard_admin_token');
+            if (token) {
+                document.getElementById('fetchBtn').disabled = false;
+                output.textContent = '既存のトークンが見つかりました。顧客データ取得ボタンを押してください';
+            } else {
+                output.textContent = 'ログインボタンを押してください';
+            }
+        });
+    </script>
+</body>
+</html>

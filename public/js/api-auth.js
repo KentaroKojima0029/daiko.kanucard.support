@@ -21,9 +21,9 @@ const authAPI = {
         };
       }
 
-      // メールアドレスの形式チェック
+      // メールアドレスの形式チェック（adminの場合はスキップ）
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
+      if (email !== 'admin' && !emailRegex.test(email)) {
         throw {
           success: false,
           message: 'メールアドレスの形式が正しくありません',
@@ -31,10 +31,12 @@ const authAPI = {
         };
       }
 
-      const response = await apiClient.post(API_ENDPOINTS.auth.login, {
-        email,
-        password
-      });
+      // adminの場合は、usernameとして送信
+      const loginData = email === 'admin'
+        ? { username: 'admin', password }
+        : { email, password };
+
+      const response = await apiClient.post(API_ENDPOINTS.auth.login, loginData);
 
       // ログイン成功時、トークンとユーザー情報を保存
       if (response.success && response.data) {
@@ -299,6 +301,9 @@ const authAPI = {
     });
   }
 };
+
+// authManagerをauthAPIのエイリアスとして定義（後方互換性のため）
+const authManager = authAPI;
 
 // ページ読み込み時にセッション管理を初期化
 // 注意: admin.html 側で独自の初期化ロジックがあるため、自動初期化を無効化
