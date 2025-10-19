@@ -6,7 +6,8 @@
 // API基本設定
 const API_CONFIG = {
   // APIエンドポイント
-  baseURL: 'https://api.kanucard.com',
+  // 環境に応じて自動的に設定（本番環境とローカル環境の両方で動作）
+  baseURL: window.location.origin,
 
   // タイムアウト時間（30秒）
   timeout: 30000,

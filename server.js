@@ -913,6 +913,184 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
     });
 });
 
+// Shopify API エンドポイント（モック実装）
+// 顧客一覧取得
+app.get('/api/shopify/customers', authenticateToken, (req, res) => {
+    try {
+        // モックの顧客データを返す
+        const mockCustomers = [
+            {
+                id: '1',
+                email: 'tanaka@example.com',
+                firstName: '太郎',
+                lastName: '田中',
+                fullName: '田中 太郎',
+                phone: '090-1234-5678',
+                ordersCount: 5,
+                totalSpent: '50000',
+                createdAt: '2024-01-15T10:00:00Z',
+                address: {
+                    address1: '東京都渋谷区',
+                    city: '渋谷',
+                    province: '東京都',
+                    country: '日本',
+                    zip: '150-0001'
+                }
+            },
+            {
+                id: '2',
+                email: 'suzuki@example.com',
+                firstName: '花子',
+                lastName: '鈴木',
+                fullName: '鈴木 花子',
+                phone: '080-9876-5432',
+                ordersCount: 3,
+                totalSpent: '30000',
+                createdAt: '2024-02-20T14:30:00Z',
+                address: {
+                    address1: '大阪府大阪市北区',
+                    city: '大阪',
+                    province: '大阪府',
+                    country: '日本',
+                    zip: '530-0001'
+                }
+            },
+            {
+                id: '3',
+                email: 'yamada@example.com',
+                firstName: '一郎',
+                lastName: '山田',
+                fullName: '山田 一郎',
+                phone: '070-2468-1357',
+                ordersCount: 0,
+                totalSpent: '0',
+                createdAt: '2024-03-10T09:15:00Z',
+                address: null
+            }
+        ];
+
+        res.json({
+            success: true,
+            data: {
+                customers: mockCustomers,
+                total: mockCustomers.length
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching customers:', error);
+        res.status(500).json({
+            success: false,
+            message: '顧客データの取得に失敗しました'
+        });
+    }
+});
+
+// 顧客詳細取得（メールアドレスまたはIDで取得）
+app.get('/api/shopify/customer', authenticateToken, (req, res) => {
+    try {
+        const { email } = req.query;
+
+        // モックの顧客データ
+        const mockCustomer = {
+            id: '1',
+            email: email || 'customer@example.com',
+            firstName: '太郎',
+            lastName: '田中',
+            fullName: '田中 太郎',
+            phone: '090-1234-5678',
+            ordersCount: 5,
+            totalSpent: '50000',
+            createdAt: '2024-01-15T10:00:00Z',
+            address: {
+                address1: '東京都渋谷区',
+                city: '渋谷',
+                province: '東京都',
+                country: '日本',
+                zip: '150-0001'
+            },
+            orders: [
+                {
+                    id: 'ORDER-001',
+                    name: '#1001',
+                    createdAt: '2024-03-01T10:00:00Z',
+                    totalPrice: '15000',
+                    lineItems: [
+                        {
+                            title: 'PSA鑑定代行サービス',
+                            quantity: 1,
+                            price: '15000'
+                        }
+                    ]
+                }
+            ]
+        };
+
+        res.json({
+            success: true,
+            data: mockCustomer
+        });
+    } catch (error) {
+        console.error('Error fetching customer detail:', error);
+        res.status(500).json({
+            success: false,
+            message: '顧客詳細の取得に失敗しました'
+        });
+    }
+});
+
+// 顧客詳細取得（ID指定）
+app.get('/api/shopify/customer/:id', authenticateToken, (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // モックの顧客データ
+        const mockCustomer = {
+            id: id,
+            email: 'customer@example.com',
+            firstName: '太郎',
+            lastName: '田中',
+            fullName: '田中 太郎',
+            phone: '090-1234-5678',
+            ordersCount: 5,
+            totalSpent: '50000',
+            createdAt: '2024-01-15T10:00:00Z',
+            address: {
+                address1: '東京都渋谷区',
+                city: '渋谷',
+                province: '東京都',
+                country: '日本',
+                zip: '150-0001'
+            },
+            orders: [
+                {
+                    id: 'ORDER-001',
+                    name: '#1001',
+                    createdAt: '2024-03-01T10:00:00Z',
+                    totalPrice: '15000',
+                    lineItems: [
+                        {
+                            title: 'PSA鑑定代行サービス',
+                            quantity: 1,
+                            price: '15000'
+                        }
+                    ]
+                }
+            ]
+        };
+
+        res.json({
+            success: true,
+            data: mockCustomer
+        });
+    } catch (error) {
+        console.error('Error fetching customer by ID:', error);
+        res.status(500).json({
+            success: false,
+            message: '顧客詳細の取得に失敗しました'
+        });
+    }
+});
+
 // 静的ファイル配信
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
