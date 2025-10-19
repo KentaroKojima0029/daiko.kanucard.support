@@ -115,7 +115,7 @@ git push origin main
 
 問題が発生した場合:
 - GitHub Issues: https://github.com/anthropics/claude-code/issues
-- メール: collection@kanucard.com
+- メール: contact@kanucard.com
 
 ---
 最終更新: 2025-10-19

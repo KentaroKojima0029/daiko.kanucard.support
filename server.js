@@ -43,15 +43,24 @@ if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-// メール送信設定
+// メール送信設定 (Xserver SMTP)
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'sv10210.xserver.jp',
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === 'true',
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: false,
     auth: {
-        user: process.env.SMTP_USER || 'collection@kanucard.com',
+        user: process.env.SMTP_USER || 'contact@kanucard.com',
         pass: process.env.SMTP_PASS
-    }
+    },
+    tls: {
+        rejectUnauthorized: false,
+        ciphers: 'SSLv3'
+    },
+    connectionTimeout: 30000,
+    greetingTimeout: 20000,
+    socketTimeout: 30000,
+    logger: process.env.NODE_ENV !== 'production',
+    debug: process.env.NODE_ENV !== 'production'
 });
 
 // 認証ミドルウェア（JWT認証）
@@ -114,7 +123,7 @@ app.post('/api/auth/login', async (req, res) => {
         const loginId = email || username;
 
         // 環境変数から認証情報を取得
-        const validEmail = process.env.ADMIN_EMAIL || 'collection@kanucard.com';
+        const validEmail = process.env.ADMIN_EMAIL || 'contact@kanucard.com';
         const validPassword = process.env.ADMIN_PASSWORD || '#collection30';
 
         // 認証チェック（ユーザー名 'admin' またはメールアドレスでログイン可能）
@@ -911,7 +920,7 @@ app.get('/api/admin/logs', authenticateToken, (req, res) => {
 // メール送信関数
 async function sendMessageEmail(message, toEmail) {
     const mailOptions = {
-        from: `PSA代行サービス <${process.env.SMTP_USER || 'collection@kanucard.com'}>`,
+        from: `PSA代行サービス <${process.env.SMTP_USER || 'contact@kanucard.com'}>`,
         to: toEmail,
         subject: 'PSA代行サービスからのメッセージ',
         html: `
@@ -940,7 +949,7 @@ async function sendApprovalEmail(approval) {
     const approvalUrl = `https://kanucard-daiko-support.onrender.com/approval/${approval.approval_key}`;
 
     const mailOptions = {
-        from: `PSA代行サービス <${process.env.SMTP_USER || 'collection@kanucard.com'}>`,
+        from: `PSA代行サービス <${process.env.SMTP_USER || 'contact@kanucard.com'}>`,
         to: approval.customer_email,
         subject: `【PSA代行】買取承認のお願い - ${approval.customer_name}様`,
         html: `
@@ -1056,10 +1065,10 @@ app.post('/api/public/psa-application', async (req, res) => {
 
         // 管理者にメール通知を送信
         try {
-            const adminEmail = process.env.ADMIN_EMAIL || 'collection@kanucard.com';
+            const adminEmail = process.env.ADMIN_EMAIL || 'contact@kanucard.com';
 
             const mailOptions = {
-                from: process.env.FROM_EMAIL || 'collection@kanucard.com',
+                from: process.env.FROM_EMAIL || 'contact@kanucard.com',
                 to: adminEmail,
                 subject: `【新規申込】PSA鑑定代行申込 - ${applicationData.customerName}`,
                 html: `
@@ -1121,7 +1130,7 @@ app.post('/api/public/psa-application', async (req, res) => {
         // 顧客に確認メールを送信
         try {
             const customerMailOptions = {
-                from: process.env.FROM_EMAIL || 'collection@kanucard.com',
+                from: process.env.FROM_EMAIL || 'contact@kanucard.com',
                 to: applicationData.customerEmail,
                 subject: `【申込受付】PSA鑑定代行申込を受け付けました - ${applicationId}`,
                 html: `
@@ -1156,7 +1165,7 @@ app.post('/api/public/psa-application', async (req, res) => {
 
                         <div style="border-top: 1px solid #dee2e6; margin-top: 30px; padding-top: 20px; color: #666;">
                             <p>KanuCard PSA鑑定代行サービス<br>
-                            Email: collection@kanucard.com<br>
+                            Email: contact@kanucard.com<br>
                             営業時間: 平日 10:00-18:00</p>
                         </div>
                     </div>

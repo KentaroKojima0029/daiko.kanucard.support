@@ -71,13 +71,13 @@ dbService.updatePSARequestStep(sampleRequest.id, 1, {
 dbService.updatePSARequestStep(sampleRequest.id, 2, {
     status: 'completed',
     notes: 'カード3種類、合計4枚を受領しました。状態確認完了。'
-}, 'collection@kanucard.com');
+}, 'contact@kanucard.com');
 
 // ステップ3: 代行料お支払い（現在進行中）
 dbService.updatePSARequestStep(sampleRequest.id, 3, {
     status: 'current',
     notes: '代行料 ¥12,000 のお支払いをお待ちしております。'
-}, 'collection@kanucard.com');
+}, 'contact@kanucard.com');
 
 // ステップ4-6: 未完了
 dbService.updatePSARequestStep(sampleRequest.id, 4, {
@@ -103,7 +103,7 @@ console.log('  - ステップ3: 進行中');
 // 5. サンプルメッセージの作成
 const messageId = dbService.createMessage({
     requestId: sampleRequest.id,
-    from: 'collection@kanucard.com',
+    from: 'contact@kanucard.com',
     to: sampleUser.email,
     message: 'カードを受領いたしました。状態は良好です。代行料のお支払いをお願いいたします。'
 });

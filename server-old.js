@@ -72,7 +72,7 @@ const transporter = nodemailer.createTransport({
     port: parseInt(process.env.SMTP_PORT) || 587,
     secure: process.env.SMTP_SECURE === 'true',
     auth: {
-        user: process.env.SMTP_USER || 'collection@kanucard.com',
+        user: process.env.SMTP_USER || 'contact@kanucard.com',
         pass: process.env.SMTP_PASS
     }
 });
@@ -130,7 +130,7 @@ let users = loadData(USERS_FILE, []);
 
 // デフォルト管理者ユーザーの作成
 async function initializeAdmin() {
-    const adminEmail = process.env.ADMIN_EMAIL || 'collection@kanucard.com';
+    const adminEmail = process.env.ADMIN_EMAIL || 'contact@kanucard.com';
     const adminPassword = process.env.ADMIN_PASSWORD || '#collection30';
 
     const existingAdmin = users.find(u => u.email === adminEmail);
@@ -155,7 +155,7 @@ function authenticateToken(req, res, next) {
     // 認証をスキップし、ダミーのユーザー情報を設定
     req.user = {
         id: 'admin',
-        email: 'collection@kanucard.com',
+        email: 'contact@kanucard.com',
         role: 'admin'
     };
     next();
@@ -236,7 +236,7 @@ async function sendApprovalEmail(requestData) {
     `;
 
     const mailOptions = {
-        from: `PSA代行サービス <${process.env.SMTP_USER || 'collection@kanucard.com'}>`,
+        from: `PSA代行サービス <${process.env.SMTP_USER || 'contact@kanucard.com'}>`,
         to: customerEmail,
         subject: `【PSA代行】買取承認のお願い - ${customerName}様`,
         html: htmlContent
@@ -404,11 +404,11 @@ app.post('/api/approval/:key/submit', async (req, res) => {
         saveData(REQUESTS_FILE, approvalRequests);
 
         // 管理者に通知メール送信
-        const adminEmail = process.env.ADMIN_EMAIL || 'collection@kanucard.com';
+        const adminEmail = process.env.ADMIN_EMAIL || 'contact@kanucard.com';
         const request = approvalRequests[requestIndex];
 
         const mailOptions = {
-            from: `PSA代行サービス <${process.env.SMTP_USER || 'collection@kanucard.com'}>`,
+            from: `PSA代行サービス <${process.env.SMTP_USER || 'contact@kanucard.com'}>`,
             to: adminEmail,
             subject: `【承認結果】${request.customerName}様からの回答`,
             html: `

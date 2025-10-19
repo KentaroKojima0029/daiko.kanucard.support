@@ -280,7 +280,7 @@ JWT_SECRET=your-secure-random-string
 SMTP_HOST=sv10210.xserver.jp
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER=collection@kanucard.com
+SMTP_USER=contact@kanucard.com
 SMTP_PASS=your-smtp-password
 
 # FTP (Xserver)
