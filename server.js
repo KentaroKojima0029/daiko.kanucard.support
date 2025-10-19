@@ -1011,6 +1011,210 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
     });
 });
 
+// 公開API（認証不要）- 顧客用PSA申請フォーム送信
+app.post('/api/public/psa-application', async (req, res) => {
+    try {
+        const applicationData = req.body;
+
+        // 必須項目の検証
+        if (!applicationData.customerName || !applicationData.customerEmail || !applicationData.customerPhone) {
+            return res.status(400).json({
+                success: false,
+                message: '必須項目が入力されていません'
+            });
+        }
+
+        // 申請IDを生成
+        const applicationId = 'PSA-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+
+        // ユーザーの作成または取得
+        const user = dbService.findOrCreateUser({
+            email: applicationData.customerEmail,
+            name: applicationData.customerName,
+            phone: applicationData.customerPhone
+        });
+
+        // PSA申請データを保存
+        const psaRequest = dbService.createPSARequest({
+            userId: user.id,
+            applicationId: applicationId,
+            shopifyCustomerId: null,
+            status: 'pending',
+            country: applicationData.country || 'Japan',
+            cards: applicationData.cards || [],
+            cardCount: applicationData.cardCount || 0,
+            serviceType: applicationData.serviceType || 'standard',
+            specialRequests: applicationData.specialRequests || '',
+            unitPrice: applicationData.unitPrice || 0,
+            totalAmount: applicationData.totalAmount || 0,
+            postalCode: applicationData.postalCode || '',
+            address: applicationData.address || '',
+            submittedAt: applicationData.submittedAt || new Date().toISOString(),
+            adminNotes: '',
+            lastUpdated: new Date().toISOString()
+        });
+
+        // 管理者にメール通知を送信
+        try {
+            const adminEmail = process.env.ADMIN_EMAIL || 'collection@kanucard.com';
+
+            const mailOptions = {
+                from: process.env.FROM_EMAIL || 'collection@kanucard.com',
+                to: adminEmail,
+                subject: `【新規申込】PSA鑑定代行申込 - ${applicationData.customerName}`,
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+                        <h2 style="color: #667eea;">新規PSA鑑定代行申込</h2>
+
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                            <h3>お客様情報</h3>
+                            <p><strong>申込ID:</strong> ${applicationId}</p>
+                            <p><strong>お名前:</strong> ${applicationData.customerName}</p>
+                            <p><strong>メール:</strong> ${applicationData.customerEmail}</p>
+                            <p><strong>電話番号:</strong> ${applicationData.customerPhone}</p>
+                            <p><strong>住所:</strong> ${applicationData.postalCode} ${applicationData.address}</p>
+                        </div>
+
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                            <h3>申込内容</h3>
+                            <p><strong>カード枚数:</strong> ${applicationData.cardCount}枚</p>
+                            <p><strong>サービス:</strong> ${applicationData.serviceType === 'express' ? 'エクスプレス' : 'スタンダード'}</p>
+                            <p><strong>合計金額:</strong> ¥${applicationData.totalAmount?.toLocaleString() || 0}</p>
+                            <p><strong>申込日時:</strong> ${new Date(applicationData.submittedAt).toLocaleString('ja-JP')}</p>
+                        </div>
+
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                            <h3>カード詳細</h3>
+                            ${applicationData.cards.map((card, index) => `
+                                <div style="border-bottom: 1px solid #dee2e6; padding: 10px 0;">
+                                    <p><strong>カード ${index + 1}:</strong> ${card.name}</p>
+                                    <p>セット: ${card.set || 'なし'} / 番号: ${card.number || 'なし'}</p>
+                                    <p>言語: ${card.language || '日本語'} / 期待グレード: ${card.expectedGrade || '不明'}</p>
+                                    ${card.notes ? `<p>備考: ${card.notes}</p>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+
+                        ${applicationData.specialRequests ? `
+                        <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                            <h3>特記事項</h3>
+                            <p>${applicationData.specialRequests}</p>
+                        </div>
+                        ` : ''}
+
+                        <div style="text-align: center; margin: 30px 0;">
+                            <a href="${process.env.BASE_URL || 'http://localhost:3000'}/admin.html"
+                               style="background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                                管理画面で確認する
+                            </a>
+                        </div>
+                    </div>
+                `
+            };
+
+            await transporter.sendMail(mailOptions);
+        } catch (emailError) {
+            console.error('Admin notification email error:', emailError);
+            // メール送信失敗してもAPIは成功とする
+        }
+
+        // 顧客に確認メールを送信
+        try {
+            const customerMailOptions = {
+                from: process.env.FROM_EMAIL || 'collection@kanucard.com',
+                to: applicationData.customerEmail,
+                subject: `【申込受付】PSA鑑定代行申込を受け付けました - ${applicationId}`,
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+                        <h2 style="color: #667eea;">PSA鑑定代行申込を受け付けました</h2>
+
+                        <p>${applicationData.customerName} 様</p>
+
+                        <p>この度はPSA鑑定代行サービスにお申し込みいただき、誠にありがとうございます。<br>
+                        以下の内容で申込を受け付けました。</p>
+
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                            <h3>申込内容</h3>
+                            <p><strong>申込ID:</strong> ${applicationId}</p>
+                            <p><strong>カード枚数:</strong> ${applicationData.cardCount}枚</p>
+                            <p><strong>サービス:</strong> ${applicationData.serviceType === 'express' ? 'エクスプレスサービス' : 'スタンダードサービス'}</p>
+                            <p><strong>合計金額:</strong> ¥${applicationData.totalAmount?.toLocaleString() || 0}（税込）</p>
+                        </div>
+
+                        <h3>今後の流れ</h3>
+                        <ol style="line-height: 1.8;">
+                            <li>24時間以内に、カード発送の詳細手順をメールでご案内いたします</li>
+                            <li>カードを指定の方法で弊社にお送りください</li>
+                            <li>カード到着後、状態を確認してPSAへ提出いたします</li>
+                            <li>鑑定完了後、結果をお知らせし、返送いたします</li>
+                        </ol>
+
+                        <p style="color: #666; margin-top: 30px;">
+                        ご不明な点がございましたら、このメールに返信いただくか、<br>
+                        以下の連絡先までお問い合わせください。
+                        </p>
+
+                        <div style="border-top: 1px solid #dee2e6; margin-top: 30px; padding-top: 20px; color: #666;">
+                            <p>KanuCard PSA鑑定代行サービス<br>
+                            Email: collection@kanucard.com<br>
+                            営業時間: 平日 10:00-18:00</p>
+                        </div>
+                    </div>
+                `
+            };
+
+            await transporter.sendMail(customerMailOptions);
+        } catch (emailError) {
+            console.error('Customer confirmation email error:', emailError);
+            // メール送信失敗してもAPIは成功とする
+        }
+
+        res.json({
+            success: true,
+            data: {
+                applicationId: applicationId,
+                message: '申込を受け付けました。確認メールをお送りしましたのでご確認ください。'
+            }
+        });
+
+    } catch (error) {
+        console.error('PSA application error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'サーバーエラーが発生しました。時間をおいて再度お試しください。'
+        });
+    }
+});
+
+// GET /api/psa-requests - PSA申請一覧を取得
+app.get('/api/psa-requests', authenticateToken, async (req, res) => {
+    try {
+        const requests = dbService.getAllPSARequests();
+
+        // 各申請にユーザー情報を含める
+        const requestsWithUserInfo = requests.map(request => {
+            const user = dbService.getUserById(request.userId);
+            return {
+                ...request,
+                customerName: user ? user.name : 'Unknown',
+                customerEmail: user ? user.email : '',
+                customerPhone: user ? user.phone : ''
+            };
+        });
+
+        res.json({
+            success: true,
+            data: requestsWithUserInfo
+        });
+    } catch (error) {
+        console.error('PSA申請一覧取得エラー:', error);
+        res.status(500).json({
+            success: false,
+            message: 'PSA申請一覧の取得に失敗しました'
+        });
+    }
+});
+
 // Shopify API エンドポイント
 // 顧客一覧取得（実際のShopifyデータ）
 app.get('/api/shopify/customers', authenticateToken, async (req, res) => {

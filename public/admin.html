@@ -719,15 +719,42 @@
                 </div>
 
                 <div class="card">
+                    <!-- フィルター -->
+                    <div style="margin-bottom: 20px; display: flex; gap: 15px; align-items: center;">
+                        <input type="text" id="applicationSearch" placeholder="顧客名・メール・IDで検索..."
+                               style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px;"
+                               onkeyup="filterApplications()">
+                        <select id="applicationStatus" onchange="filterApplications()"
+                                style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px;">
+                            <option value="">全てのステータス</option>
+                            <option value="pending">申請済み</option>
+                            <option value="processing">処理中</option>
+                            <option value="shipped">発送済み</option>
+                            <option value="grading">鑑定中</option>
+                            <option value="completed">完了</option>
+                            <option value="cancelled">キャンセル</option>
+                        </select>
+                        <select id="applicationSort" onchange="sortApplications()"
+                                style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px;">
+                            <option value="date_desc">新しい順</option>
+                            <option value="date_asc">古い順</option>
+                            <option value="amount_desc">金額が高い順</option>
+                            <option value="amount_asc">金額が低い順</option>
+                        </select>
+                    </div>
+
                     <table id="applicationsTable">
                         <thead>
                             <tr>
-                                <th>申込ID</th>
+                                <th style="width: 120px;">申込ID</th>
                                 <th>顧客名</th>
-                                <th>メールアドレス</th>
-                                <th>申込日時</th>
-                                <th>ステータス</th>
-                                <th>操作</th>
+                                <th>メール/電話</th>
+                                <th style="width: 80px;">カード枚数</th>
+                                <th style="width: 100px;">サービス</th>
+                                <th style="width: 100px;">金額</th>
+                                <th style="width: 140px;">申込日時</th>
+                                <th style="width: 100px;">ステータス</th>
+                                <th style="width: 120px;">操作</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -1121,23 +1148,29 @@
 
         async function loadApplications() {
             try {
-                // APIクライアントを使用して申請一覧を取得
-                const forms = await adminAPI.getForms();
-                currentData.applications = forms;
-                updateApplicationsTable();
+                // 認証トークンを取得
+                const token = localStorage.getItem('kanucard_admin_token');
+
+                // APIから申請一覧を取得
+                const response = await fetch('/api/psa-requests', {
+                    headers: {
+                        'Authorization': token ? `Bearer ${token}` : '',
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    currentData.applications = data.data;
+                    updateApplicationsTable();
+                } else {
+                    throw new Error(data.message || '申請一覧の取得に失敗しました');
+                }
             } catch (error) {
                 console.error('Failed to load applications:', error);
-                // エラーでもローカルAPIを試みる
-                try {
-                    const response = await fetch('/api/applications');
-                    const data = await response.json();
-                    if (data.success) {
-                        currentData.applications = data.data;
-                        updateApplicationsTable();
-                    }
-                } catch (localError) {
-                    console.error('Local API also failed:', localError);
-                }
+                // エラー時は空配列を設定
+                currentData.applications = [];
+                updateApplicationsTable();
             }
         }
 
@@ -1538,6 +1571,8 @@
 
         function updateApplicationsTable() {
             const tbody = document.querySelector('#applicationsTable tbody');
+
+            // テーブルに表示する申請データ
             tbody.innerHTML = currentData.applications.map(app => {
                 const customerEmail = app.customerEmail || '';
                 const customerEmailDisplay = customerEmail ?
@@ -1545,33 +1580,102 @@
                        style="color: #1a73e8; text-decoration: none;"
                        title="Shopify注文履歴を表示">${customerEmail}</a>` : '-';
 
+                // 申請IDの表示（新しいフォーマット対応）
+                const applicationId = app.applicationId || app.id || '-';
+                const displayId = applicationId.length > 15 ?
+                    applicationId.substring(0, 15) + '...' : applicationId;
+
+                // サービスタイプの表示
+                const serviceType = app.serviceType === 'express' ?
+                    '<span style="color: #ff6b6b; font-weight: bold;">エクスプレス</span>' :
+                    '<span style="color: #4dabf7; font-weight: bold;">スタンダード</span>';
+
+                // 金額の表示
+                const amountDisplay = app.totalAmount ?
+                    `<strong>¥${Math.floor(app.totalAmount).toLocaleString()}</strong>` : '-';
+
+                // カード枚数の表示
+                const cardCount = app.cardCount || app.cards?.length || 0;
+
+                // 送信日時の処理（submittedAtもサポート）
+                const submitDate = app.createdAt || app.submittedAt || app.lastUpdated;
+
                 return `
                     <tr>
-                        <td>${app.id.substring(0, 8)}</td>
-                        <td>${app.customerName || '-'}</td>
-                        <td>${customerEmailDisplay}</td>
-                        <td>${new Date(app.createdAt).toLocaleString('ja-JP')}</td>
+                        <td title="${applicationId}"><small>${displayId}</small></td>
+                        <td><strong>${app.customerName || '-'}</strong></td>
+                        <td>
+                            ${customerEmailDisplay}<br>
+                            <small style="color: #666;">${app.customerPhone || '-'}</small>
+                        </td>
+                        <td style="text-align: center;">
+                            <span style="font-size: 1.2em; font-weight: bold; color: #2d3436;">${cardCount}</span>
+                        </td>
+                        <td>${serviceType || '-'}</td>
+                        <td style="color: #2d3436;">${amountDisplay}</td>
+                        <td><small>${new Date(submitDate).toLocaleString('ja-JP')}</small></td>
                         <td><span class="status status-${app.status}">${getStatusLabel(app.status)}</span></td>
                         <td>
                             <button class="btn btn-sm btn-primary" onclick="viewApplication('${app.id}')">詳細</button>
                             ${customerEmail ? `<button class="btn btn-sm btn-info" onclick="viewCustomerHistory('${customerEmail}')">
-                                <i class="fas fa-shopping-cart"></i> Shopify
+                                <i class="fas fa-shopping-cart"></i>
                             </button>` : ''}
                             <button class="btn btn-sm btn-success" onclick="updateApplicationStatus('${app.id}')">更新</button>
-                            <button class="btn btn-sm btn-danger" onclick="deleteApplication('${app.id}')">削除</button>
                         </td>
                     </tr>
                 `;
             }).join('');
+
+            // 申請数をバッジに表示
+            const applicationsBadge = document.getElementById('applicationsBadge');
+            if (applicationsBadge) {
+                const pendingCount = currentData.applications.filter(app => app.status === 'pending').length;
+                if (pendingCount > 0) {
+                    applicationsBadge.textContent = pendingCount;
+                    applicationsBadge.style.display = 'inline-block';
+                } else {
+                    applicationsBadge.style.display = 'none';
+                }
+            }
 
             // 進捗管理用のセレクトボックスも更新
             const select = document.getElementById('progressApplicationSelect');
             if (select) {
                 select.innerHTML = '<option value="">申込を選択してください</option>' +
                     currentData.applications.map(app =>
-                        `<option value="${app.id}">${app.customerName} - ${app.id.substring(0, 8)}</option>`
+                        `<option value="${app.id}">${app.customerName} - ${(app.applicationId || app.id).substring(0, 10)}</option>`
                     ).join('');
             }
+        }
+
+        // フィルター関数を追加
+        function filterApplications() {
+            updateApplicationsTable();
+        }
+
+        // ソート関数を追加
+        function sortApplications() {
+            const sortOrder = document.getElementById('applicationSort')?.value || 'date_desc';
+
+            currentData.applications.sort((a, b) => {
+                const dateA = new Date(a.createdAt || a.submittedAt || a.lastUpdated);
+                const dateB = new Date(b.createdAt || b.submittedAt || b.lastUpdated);
+
+                switch(sortOrder) {
+                    case 'date_asc':
+                        return dateA - dateB;
+                    case 'date_desc':
+                        return dateB - dateA;
+                    case 'amount_asc':
+                        return (a.totalAmount || 0) - (b.totalAmount || 0);
+                    case 'amount_desc':
+                        return (b.totalAmount || 0) - (a.totalAmount || 0);
+                    default:
+                        return 0;
+                }
+            });
+
+            updateApplicationsTable();
         }
 
         function updateMessagesTable() {
