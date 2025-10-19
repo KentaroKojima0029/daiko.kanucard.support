@@ -5,6 +5,69 @@
 
 const shopifyAPI = {
     /**
+     * Shopify顧客一覧を取得
+     * @param {Object} options - オプション
+     * @returns {Promise<Object>} 顧客一覧
+     */
+    async getCustomers(options = {}) {
+        try {
+            const endpoint = `/api/shopify/customers`;
+            const response = await apiClient.get(endpoint, options);
+
+            if (response.success && response.data) {
+                return response;
+            } else {
+                throw {
+                    success: false,
+                    message: response.message || '顧客データの取得に失敗しました',
+                    code: ERROR_CODES.REQUEST_FAILED
+                };
+            }
+        } catch (error) {
+            console.error('Get customers error:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Shopify顧客詳細を取得
+     * @param {string} customerIdentifier - 顧客ID or メールアドレス
+     * @returns {Promise<Object>} 顧客詳細
+     */
+    async getCustomerDetail(customerIdentifier) {
+        try {
+            if (!customerIdentifier) {
+                throw {
+                    success: false,
+                    message: '顧客IDまたはメールアドレスが必要です',
+                    code: ERROR_CODES.VALIDATION_ERROR
+                };
+            }
+
+            // メールアドレスかIDかを判定
+            const isEmail = customerIdentifier.includes('@');
+            const endpoint = isEmail
+                ? `/api/shopify/customer?email=${encodeURIComponent(customerIdentifier)}`
+                : `/api/shopify/customer/${customerIdentifier}`;
+
+            const response = await apiClient.get(endpoint);
+
+            if (response.success && response.data) {
+                return response;
+            } else {
+                throw {
+                    success: false,
+                    message: response.message || '顧客詳細の取得に失敗しました',
+                    code: ERROR_CODES.REQUEST_FAILED
+                };
+            }
+        } catch (error) {
+            console.error('Get customer detail error:', error);
+            throw error;
+        }
+    },
+
+    /**
      * 決済リンクを生成
      * @param {string} applicationId - 申請ID
      * @param {Object} paymentData - 決済データ

@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPS API テストページ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f7fa;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            padding: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 2rem;
+            border-bottom: 3px solid #1a73e8;
+            padding-bottom: 0.5rem;
+        }
+
+        .test-section {
+            margin-bottom: 2rem;
+        }
+
+        .test-section h2 {
+            color: #555;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+
+        .test-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background: #1a73e8;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1557b0;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="password"] {
+            flex: 1;
+            padding: 0.75rem;
+            font-size: 1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            transition: border-color 0.3s ease;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #1a73e8;
+        }
+
+        #result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 1rem;
+            min-height: 200px;
+            max-height: 500px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.85rem;
+            margin-left: 1rem;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .token-display {
+            background: #e8f4fd;
+            border: 1px solid #b8daff;
+            border-radius: 5px;
+            padding: 0.5rem;
+            margin-top: 1rem;
+            word-break: break-all;
+        }
+
+        .section-divider {
+            margin: 2rem 0;
+            border-top: 2px dashed #dee2e6;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 5px;
+            margin-bottom: 1rem;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+
+        .alert-danger {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .timer {
+            font-size: 0.85rem;
+            color: #666;
+            margin-left: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 VPS API テストページ</h1>
+
+        <div class="alert alert-info">
+            <strong>使用方法:</strong> まず「1. ログインテスト」を実行してトークンを取得してから、他のテストを実行してください。
+        </div>
+
+        <!-- ログイン設定 -->
+        <div class="test-section">
+            <h2>⚙️ ログイン設定</h2>
+            <div class="input-group">
+                <input type="email" id="loginEmail" placeholder="メールアドレス" value="kn24012300@gmail.com">
+                <input type="password" id="loginPassword" placeholder="パスワード" value="">
+            </div>
+            <div class="input-group">
+                <input type="text" id="apiUrl" placeholder="API URL" value="https://api.kanucard.com">
+            </div>
+        </div>
+
+        <!-- テストボタン -->
+        <div class="test-section">
+            <h2>📝 APIテスト</h2>
+            <div class="test-buttons">
+                <button class="btn-primary" onclick="testLogin()">
+                    1. ログインテスト
+                </button>
+                <button class="btn-success" onclick="testCustomers()" id="customersBtn" disabled>
+                    2. Shopify顧客一覧
+                </button>
+                <button class="btn-warning" onclick="testDashboard()" id="dashboardBtn" disabled>
+                    3. ダッシュボード
+                </button>
+                <button class="btn-warning" onclick="testShopifyStatus()" id="shopifyStatusBtn" disabled>
+                    4. Shopify統合状態
+                </button>
+                <button class="btn-danger" onclick="clearResults()">
+                    結果をクリア
+                </button>
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <!-- トークン表示 -->
+        <div class="test-section">
+            <h2>🔐 認証トークン</h2>
+            <div class="token-display" id="tokenDisplay">
+                トークンなし
+            </div>
+        </div>
+
+        <!-- 結果表示 -->
+        <div class="test-section">
+            <h2>📊 実行結果<span id="timer" class="timer"></span></h2>
+            <pre id="result">テストを実行すると結果がここに表示されます...</pre>
+        </div>
+    </div>
+
+    <script>
+        let token = '';
+        let startTime = null;
+
+        // タイマー更新
+        function updateTimer() {
+            if (startTime) {
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+                document.getElementById('timer').textContent = `(${elapsed}秒)`;
+            }
+        }
+
+        // 結果表示
+        function displayResult(data, type = 'info') {
+            const result = document.getElementById('result');
+            const timestamp = new Date().toLocaleTimeString('ja-JP');
+
+            let statusClass = 'status-warning';
+            if (type === 'success') statusClass = 'status-success';
+            if (type === 'error') statusClass = 'status-error';
+
+            const separator = '='.repeat(60);
+            const header = `[${timestamp}] <span class="${statusClass}">${type.toUpperCase()}</span>`;
+
+            result.innerHTML += `\n${separator}\n${header}\n${separator}\n`;
+            result.innerHTML += typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+            result.innerHTML += '\n';
+
+            // スクロール
+            result.scrollTop = result.scrollHeight;
+        }
+
+        // 結果クリア
+        function clearResults() {
+            document.getElementById('result').innerHTML = 'テストを実行すると結果がここに表示されます...';
+            document.getElementById('timer').textContent = '';
+            startTime = null;
+        }
+
+        // トークン保存
+        function saveToken(newToken) {
+            token = newToken;
+            document.getElementById('tokenDisplay').textContent = token
+                ? `Bearer ${token.substring(0, 20)}...${token.substring(token.length - 10)}`
+                : 'トークンなし';
+
+            // ボタンの有効/無効を切り替え
+            const buttons = ['customersBtn', 'dashboardBtn', 'shopifyStatusBtn'];
+            buttons.forEach(id => {
+                document.getElementById(id).disabled = !token;
+            });
+        }
+
+        // APIリクエスト実行
+        async function executeRequest(endpoint, method = 'GET', body = null, useAuth = true) {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const url = `${apiUrl}${endpoint}`;
+
+            startTime = Date.now();
+            const timer = setInterval(updateTimer, 100);
+
+            try {
+                displayResult(`Requesting: ${method} ${url}`, 'info');
+
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                };
+
+                if (useAuth && token) {
+                    options.headers['Authorization'] = `Bearer ${token}`;
+                }
+
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+
+                const response = await fetch(url, options);
+                const data = await response.json();
+
+                clearInterval(timer);
+                updateTimer();
+
+                if (response.ok && data.success) {
+                    displayResult(data, 'success');
+                    return data;
+                } else {
+                    displayResult(data, 'error');
+                    return data;
+                }
+
+            } catch (error) {
+                clearInterval(timer);
+                updateTimer();
+
+                displayResult({
+                    error: error.message,
+                    type: error.name,
+                    stack: error.stack
+                }, 'error');
+
+                return null;
+            }
+        }
+
+        // ログインテスト
+        async function testLogin() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            if (!email || !password) {
+                alert('メールアドレスとパスワードを入力してください');
+                return;
+            }
+
+            const result = await executeRequest('/api/auth/login', 'POST', {
+                email: email,
+                password: password
+            }, false);
+
+            if (result && result.success && result.token) {
+                saveToken(result.token);
+                alert('ログイン成功！他のテストが実行可能になりました。');
+            } else {
+                saveToken('');
+                alert('ログイン失敗。認証情報を確認してください。');
+            }
+        }
+
+        // 顧客一覧取得
+        async function testCustomers() {
+            if (!token) {
+                alert('先にログインしてください');
+                return;
+            }
+
+            await executeRequest('/api/shopify/customers', 'GET');
+        }
+
+        // ダッシュボード取得
+        async function testDashboard() {
+            if (!token) {
+                alert('先にログインしてください');
+                return;
+            }
+
+            await executeRequest('/api/admin/dashboard', 'GET');
+        }
+
+        // Shopify統合状態確認
+        async function testShopifyStatus() {
+            if (!token) {
+                alert('先にログインしてください');
+                return;
+            }
+
+            await executeRequest('/api/shopify/status', 'GET');
+        }
+
+        // ページ読み込み時の初期設定
+        document.addEventListener('DOMContentLoaded', () => {
+            // パスワードフィールドでEnterキー押下時にログイン実行
+            document.getElementById('loginPassword').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    testLogin();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
