@@ -721,6 +721,10 @@
                 <i>📅</i>
                 <span>発送スケジュール</span>
             </div>
+            <div class="nav-item" onclick="showSection('form-submissions', event)">
+                <i>📋</i>
+                <span>フォーム申請管理</span>
+            </div>
         </div>
 
         <!-- コンテンツエリア -->
@@ -1032,6 +1036,72 @@
 
                 <div style="text-align: center; margin-top: 20px;">
                     <button class="btn btn-primary" onclick="updateSchedule()">スケジュールを更新</button>
+                </div>
+            </div>
+
+            <!-- フォーム申請管理セクション -->
+            <div id="form-submissions-section" class="section" style="display: none;">
+                <div class="content-header">
+                    <h2 class="content-title">フォーム申請管理</h2>
+                </div>
+
+                <!-- フィルターとアクション -->
+                <div class="card" style="margin-bottom: 2rem;">
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+                        <select id="statusFilter" class="form-control" style="max-width: 200px;" onchange="filterSubmissions()">
+                            <option value="">すべてのステータス</option>
+                            <option value="pending">保留中</option>
+                            <option value="processing">処理中</option>
+                            <option value="completed">完了</option>
+                            <option value="cancelled">キャンセル</option>
+                        </select>
+
+                        <input type="text" id="searchSubmissions" class="form-control" placeholder="顧客名・メールで検索..."
+                               style="max-width: 300px;" oninput="filterSubmissions()">
+
+                        <button class="btn btn-primary" onclick="loadFormSubmissions()">
+                            <i class="fas fa-sync"></i> 更新
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 申請一覧テーブル -->
+                <div class="card">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>申請ID</th>
+                                <th>顧客名</th>
+                                <th>メールアドレス</th>
+                                <th>プラン</th>
+                                <th>アイテム数</th>
+                                <th>ステータス</th>
+                                <th>申請日時</th>
+                                <th>アクション</th>
+                            </tr>
+                        </thead>
+                        <tbody id="submissionsTableBody">
+                            <tr>
+                                <td colspan="8" style="text-align: center; padding: 2rem;">
+                                    <div class="spinner"></div>
+                                    データを読み込んでいます...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- フォーム申請詳細モーダル -->
+            <div id="submissionDetailModal" class="modal" style="display: none;">
+                <div class="modal-content" style="max-width: 800px;">
+                    <div class="modal-header">
+                        <h3 id="submissionModalTitle">申請詳細</h3>
+                        <span class="close" onclick="closeSubmissionDetailModal()">&times;</span>
+                    </div>
+                    <div class="modal-body" id="submissionModalBody">
+                        <!-- 詳細内容がここに表示されます -->
+                    </div>
                 </div>
             </div>
 
@@ -1959,6 +2029,8 @@
                 updateDashboard();
             } else if (sectionName === 'customers') {
                 loadShopifyCustomers();
+            } else if (sectionName === 'form-submissions') {
+                loadFormSubmissions();
             }
         }
 
@@ -3078,6 +3150,295 @@
                 closeModal();
             }
         }
+
+        // ========== フォーム申請管理機能 ==========
+
+        // グローバル変数
+        let allSubmissions = [];
+        let filteredSubmissions = [];
+
+        // フォーム申請一覧を読み込み
+        async function loadFormSubmissions() {
+            try {
+                const response = await apiClient.get('/api/admin/form-submissions');
+
+                if (response.success) {
+                    allSubmissions = response.data || [];
+                    filteredSubmissions = [...allSubmissions];
+                    displaySubmissions(filteredSubmissions);
+                } else {
+                    throw new Error(response.error || 'データの取得に失敗しました');
+                }
+            } catch (error) {
+                console.error('フォーム申請取得エラー:', error);
+                document.getElementById('submissionsTableBody').innerHTML = `
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 2rem; color: #e74c3c;">
+                            <i class="fas fa-exclamation-triangle"></i> ${error.message}
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        // 申請を表示
+        function displaySubmissions(submissions) {
+            const tbody = document.getElementById('submissionsTableBody');
+
+            if (!submissions || submissions.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 2rem; color: #999;">
+                            申請データがありません
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = submissions.map(submission => {
+                const statusBadge = getStatusBadge(submission.status);
+                const country = submission.country === 'japan' ? '日本' : submission.country === 'usa' ? 'アメリカ' : submission.country || '-';
+                const planType = submission.plan_type === 'normal' ? 'ノーマル' : submission.plan_type === 'guarantee' ? '70%保証' : submission.plan_type || '-';
+                const plan = `${country} ${planType}`;
+                const itemCount = submission.cards ? submission.cards.length : 0;
+                const createdDate = new Date(submission.created_at).toLocaleString('ja-JP');
+
+                return `
+                    <tr>
+                        <td style="font-family: monospace;">${submission.id.substring(0, 8)}...</td>
+                        <td>${submission.user ? submission.user.name || '-' : '-'}</td>
+                        <td>${submission.user ? submission.user.email || '-' : '-'}</td>
+                        <td>${plan}</td>
+                        <td>${itemCount}</td>
+                        <td>${statusBadge}</td>
+                        <td>${createdDate}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="viewSubmissionDetail('${submission.id}')">
+                                詳細
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // ステータスバッジを取得
+        function getStatusBadge(status) {
+            const statusMap = {
+                'pending': { label: '保留中', class: 'warning' },
+                'processing': { label: '処理中', class: 'info' },
+                'completed': { label: '完了', class: 'success' },
+                'cancelled': { label: 'キャンセル', class: 'danger' }
+            };
+
+            const statusInfo = statusMap[status] || { label: status || '不明', class: 'secondary' };
+            return `<span class="badge badge-${statusInfo.class}">${statusInfo.label}</span>`;
+        }
+
+        // 申請をフィルター
+        function filterSubmissions() {
+            const statusFilter = document.getElementById('statusFilter').value;
+            const searchTerm = document.getElementById('searchSubmissions').value.toLowerCase();
+
+            filteredSubmissions = allSubmissions.filter(submission => {
+                // ステータスフィルター
+                if (statusFilter && submission.status !== statusFilter) {
+                    return false;
+                }
+
+                // 検索フィルター
+                if (searchTerm) {
+                    const userName = submission.user?.name?.toLowerCase() || '';
+                    const userEmail = submission.user?.email?.toLowerCase() || '';
+                    if (!userName.includes(searchTerm) && !userEmail.includes(searchTerm)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+
+            displaySubmissions(filteredSubmissions);
+        }
+
+        // 申請詳細を表示
+        async function viewSubmissionDetail(submissionId) {
+            try {
+                const response = await apiClient.get(`/api/admin/form-submission/${submissionId}`);
+
+                if (response.success) {
+                    const submission = response.data;
+                    showSubmissionDetailModal(submission);
+                } else {
+                    throw new Error(response.error || '詳細の取得に失敗しました');
+                }
+            } catch (error) {
+                console.error('申請詳細取得エラー:', error);
+                alert('申請詳細の取得に失敗しました: ' + error.message);
+            }
+        }
+
+        // 申請詳細モーダルを表示
+        function showSubmissionDetailModal(submission) {
+            const modal = document.getElementById('submissionDetailModal');
+            const modalTitle = document.getElementById('submissionModalTitle');
+            const modalBody = document.getElementById('submissionModalBody');
+
+            const country = submission.country === 'japan' ? '日本' : submission.country === 'usa' ? 'アメリカ' : submission.country || '-';
+            const planType = submission.plan_type === 'normal' ? 'ノーマル' : submission.plan_type === 'guarantee' ? '70%保証' : submission.plan_type || '-';
+            const plan = `${country} ${planType}`;
+
+            modalTitle.textContent = `申請詳細 - ${submission.id.substring(0, 12)}`;
+
+            modalBody.innerHTML = `
+                <div style="margin-bottom: 2rem;">
+                    <h4>基本情報</h4>
+                    <table class="table">
+                        <tr>
+                            <th style="width: 200px;">申請ID</th>
+                            <td style="font-family: monospace;">${submission.id}</td>
+                        </tr>
+                        <tr>
+                            <th>顧客名</th>
+                            <td>${submission.user?.name || '-'}</td>
+                        </tr>
+                        <tr>
+                            <th>メールアドレス</th>
+                            <td>${submission.user?.email || '-'}</td>
+                        </tr>
+                        <tr>
+                            <th>電話番号</th>
+                            <td>${submission.user?.phone || '-'}</td>
+                        </tr>
+                        <tr>
+                            <th>プラン</th>
+                            <td>${plan}</td>
+                        </tr>
+                        <tr>
+                            <th>サービスタイプ</th>
+                            <td>${submission.service_type || 'psa-grading'}</td>
+                        </tr>
+                        <tr>
+                            <th>ステータス</th>
+                            <td>${getStatusBadge(submission.status)}</td>
+                        </tr>
+                        <tr>
+                            <th>申請日時</th>
+                            <td>${new Date(submission.created_at).toLocaleString('ja-JP')}</td>
+                        </tr>
+                        <tr>
+                            <th>更新日時</th>
+                            <td>${new Date(submission.updated_at).toLocaleString('ja-JP')}</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div style="margin-bottom: 2rem;">
+                    <h4>カード情報 (${submission.cards?.length || 0}件)</h4>
+                    ${submission.cards && submission.cards.length > 0 ? `
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>カード名</th>
+                                    <th>申告価値</th>
+                                    <th>鑑定料見積</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${submission.cards.map(card => `
+                                    <tr>
+                                        <td>${card.card_name}</td>
+                                        <td>¥${(card.declared_value || 0).toLocaleString()}</td>
+                                        <td>¥${(card.estimated_grading_fee || 0).toLocaleString()}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    ` : '<p>カード情報がありません</p>'}
+                </div>
+
+                ${submission.customer_notes ? `
+                    <div style="margin-bottom: 2rem;">
+                        <h4>顧客メモ</h4>
+                        <p style="white-space: pre-wrap; background: #f8f9fa; padding: 1rem; border-radius: 4px;">${submission.customer_notes}</p>
+                    </div>
+                ` : ''}
+
+                ${submission.admin_notes ? `
+                    <div style="margin-bottom: 2rem;">
+                        <h4>管理者メモ</h4>
+                        <p style="white-space: pre-wrap; background: #fff3cd; padding: 1rem; border-radius: 4px;">${submission.admin_notes}</p>
+                    </div>
+                ` : ''}
+
+                <div style="margin-bottom: 2rem;">
+                    <h4>ステータスを変更</h4>
+                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                        <select id="newStatus" class="form-control" style="max-width: 200px;">
+                            <option value="pending" ${submission.status === 'pending' ? 'selected' : ''}>保留中</option>
+                            <option value="processing" ${submission.status === 'processing' ? 'selected' : ''}>処理中</option>
+                            <option value="completed" ${submission.status === 'completed' ? 'selected' : ''}>完了</option>
+                            <option value="cancelled" ${submission.status === 'cancelled' ? 'selected' : ''}>キャンセル</option>
+                        </select>
+
+                        <input type="text" id="adminNotes" class="form-control" placeholder="管理者メモ（任意）"
+                               style="flex: 1; min-width: 300px;">
+
+                        <button class="btn btn-primary" onclick="updateSubmissionStatus('${submission.id}')">
+                            <i class="fas fa-save"></i> 更新
+                        </button>
+                    </div>
+                </div>
+
+                <div style="text-align: right;">
+                    <button class="btn btn-secondary" onclick="closeSubmissionDetailModal()">閉じる</button>
+                </div>
+            `;
+
+            modal.style.display = 'block';
+        }
+
+        // ステータスを更新
+        async function updateSubmissionStatus(submissionId) {
+            const newStatus = document.getElementById('newStatus').value;
+            const adminNotes = document.getElementById('adminNotes').value;
+
+            if (!confirm('ステータスを更新しますか？')) {
+                return;
+            }
+
+            try {
+                const response = await apiClient.put(`/api/admin/form-submission/${submissionId}/status`, {
+                    status: newStatus,
+                    adminNotes: adminNotes || null
+                });
+
+                if (response.success) {
+                    alert('ステータスを更新しました');
+                    closeSubmissionDetailModal();
+                    loadFormSubmissions(); // リロード
+                } else {
+                    throw new Error(response.error || '更新に失敗しました');
+                }
+            } catch (error) {
+                console.error('ステータス更新エラー:', error);
+                alert('ステータスの更新に失敗しました: ' + error.message);
+            }
+        }
+
+        // 詳細モーダルを閉じる
+        function closeSubmissionDetailModal() {
+            document.getElementById('submissionDetailModal').style.display = 'none';
+        }
+
+        // submissionDetailModalの外側クリックで閉じる
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('submissionDetailModal');
+            if (event.target === modal) {
+                closeSubmissionDetailModal();
+            }
+        });
     </script>
 </body>
 </html>
