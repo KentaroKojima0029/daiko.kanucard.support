@@ -541,36 +541,122 @@
         let allCustomers = [];
         let filteredCustomers = [];
         let currentSort = 'name';
+        let isLoading = false;
+        const CACHE_KEY = 'shopify_customers_cache';
+        const CACHE_DURATION = 5 * 60 * 1000; // 5分間のキャッシュ
 
         // ページ読み込み時
         document.addEventListener('DOMContentLoaded', async () => {
-            // 認証チェック
+            // 認証チェック（非同期で実行）
             if (!authManager.isAuthenticated()) {
                 window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
                 return;
             }
 
-            // 顧客データ読み込み
-            await loadCustomers();
+            // キャッシュからデータを先に表示
+            displayCachedData();
+
+            // バックグラウンドで最新データを取得
+            loadCustomers();
         });
 
-        // 顧客データ読み込み
-        async function loadCustomers() {
+        // キャッシュデータの表示
+        function displayCachedData() {
+            const cached = localStorage.getItem(CACHE_KEY);
+            if (cached) {
+                try {
+                    const data = JSON.parse(cached);
+                    const now = Date.now();
+
+                    // キャッシュの有効期限チェック
+                    if (data.timestamp && now - data.timestamp < CACHE_DURATION) {
+                        allCustomers = data.customers || [];
+                        filteredCustomers = [...allCustomers];
+
+                        // 即座に表示
+                        updateStats();
+                        renderTable();
+                        return true;
+                    }
+                } catch (e) {
+                    console.error('キャッシュ読み込みエラー:', e);
+                }
+            }
+
+            // キャッシュがない場合はスケルトンローダーを表示
+            showSkeletonLoader();
+            return false;
+        }
+
+        // スケルトンローダー表示
+        function showSkeletonLoader() {
             const container = document.getElementById('tableContainer');
             container.innerHTML = `
-                <div class="loading-container">
-                    <div class="spinner"></div>
-                    <p>顧客データを読み込んでいます...</p>
+                <div class="table-container">
+                    <table class="customers-table">
+                        <thead>
+                            <tr>
+                                <th>顧客名</th>
+                                <th>メールアドレス</th>
+                                <th>電話番号</th>
+                                <th>注文数</th>
+                                <th>総購入額</th>
+                                <th>登録日</th>
+                                <th>アクション</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${[1,2,3,4,5].map(() => `
+                                <tr style="animation: pulse 1.5s infinite;">
+                                    <td><div style="background: #e0e0e0; height: 20px; border-radius: 4px; width: 80%;"></div></td>
+                                    <td><div style="background: #e0e0e0; height: 20px; border-radius: 4px; width: 70%;"></div></td>
+                                    <td><div style="background: #e0e0e0; height: 20px; border-radius: 4px; width: 60%;"></div></td>
+                                    <td><div style="background: #e0e0e0; height: 20px; border-radius: 4px; width: 40%;"></div></td>
+                                    <td><div style="background: #e0e0e0; height: 20px; border-radius: 4px; width: 50%;"></div></td>
+                                    <td><div style="background: #e0e0e0; height: 20px; border-radius: 4px; width: 60%;"></div></td>
+                                    <td><div style="background: #e0e0e0; height: 30px; border-radius: 6px; width: 60px;"></div></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
                 </div>
+                <style>
+                    @keyframes pulse {
+                        0% { opacity: 1; }
+                        50% { opacity: 0.4; }
+                        100% { opacity: 1; }
+                    }
+                </style>
             `;
+        }
+
+        // 顧客データ読み込み（最適化版）
+        async function loadCustomers(showLoader = false) {
+            if (isLoading) return; // 重複読み込み防止
+            isLoading = true;
+
+            if (showLoader) {
+                showSkeletonLoader();
+            }
 
             try {
-                // APIから顧客データ取得
-                const response = await apiClient.get('/api/shopify/customers');
+                // APIから顧客データ取得（タイムアウト短縮済み）
+                const response = await Promise.race([
+                    apiClient.get('/api/shopify/customers'),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('タイムアウト')), 5000)
+                    )
+                ]);
 
                 if (response.success && response.data) {
                     allCustomers = response.data.customers || [];
                     filteredCustomers = [...allCustomers];
+
+                    // キャッシュに保存
+                    localStorage.setItem(CACHE_KEY, JSON.stringify({
+                        customers: allCustomers,
+                        timestamp: Date.now()
+                    }));
 
                     // 統計更新
                     updateStats();
@@ -583,20 +669,27 @@
 
             } catch (error) {
                 console.error('顧客データ読み込みエラー:', error);
-                container.innerHTML = `
-                    <div class="error-container">
-                        <div class="error-icon">
-                            <i class="fas fa-exclamation-triangle"></i>
+
+                // キャッシュがあれば表示を維持、なければエラー表示
+                if (allCustomers.length === 0) {
+                    const container = document.getElementById('tableContainer');
+                    container.innerHTML = `
+                        <div class="error-container">
+                            <div class="error-icon">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                            <div class="error-message">
+                                顧客データの読み込みに失敗しました<br>
+                                ${error.message || 'ネットワークエラーが発生しました'}
+                            </div>
+                            <button class="retry-button" onclick="loadCustomers(true)">
+                                <i class="fas fa-redo"></i> 再試行
+                            </button>
                         </div>
-                        <div class="error-message">
-                            顧客データの読み込みに失敗しました<br>
-                            ${error.message || 'ネットワークエラーが発生しました'}
-                        </div>
-                        <button class="retry-button" onclick="loadCustomers()">
-                            <i class="fas fa-redo"></i> 再試行
-                        </button>
-                    </div>
-                `;
+                    `;
+                }
+            } finally {
+                isLoading = false;
             }
         }
 
@@ -760,9 +853,12 @@
             }
         }
 
-        // データ更新
+        // データ更新（強制リロード）
         async function refreshCustomers() {
-            await loadCustomers();
+            // キャッシュをクリア
+            localStorage.removeItem(CACHE_KEY);
+            // データを再読み込み
+            await loadCustomers(true);
         }
     </script>
 </body>

@@ -914,10 +914,13 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
 });
 
 // Shopify API エンドポイント（モック実装）
-// 顧客一覧取得
+// 顧客一覧取得（高速化版）
 app.get('/api/shopify/customers', authenticateToken, (req, res) => {
+    // キャッシュヘッダーを設定（ブラウザキャッシュ1分）
+    res.setHeader('Cache-Control', 'public, max-age=60');
+
     try {
-        // モックの顧客データを返す
+        // モックの顧客データを即座に返す
         const mockCustomers = [
             {
                 id: '1',
