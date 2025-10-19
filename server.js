@@ -1347,43 +1347,39 @@ app.get('/api/shopify/customer', authenticateToken, async (req, res) => {
         });
 
         // データを整形
-        const formattedCustomer = {
-            id: customerData.id,
-            email: customerData.email || '',
-            firstName: customerData.first_name || '',
-            lastName: customerData.last_name || '',
-            fullName: `${customerData.last_name || ''} ${customerData.first_name || ''}`.trim(),
-            phone: customerData.phone || '',
-            ordersCount: customerData.orders_count || 0,
-            totalSpent: customerData.total_spent || '0',
-            createdAt: customerData.created_at,
-            address: customerData.default_address ? {
-                address1: customerData.default_address.address1 || '',
-                address2: customerData.default_address.address2 || '',
-                city: customerData.default_address.city || '',
-                province: customerData.default_address.province || '',
-                country: customerData.default_address.country || '',
-                zip: customerData.default_address.zip || '',
-                phone: customerData.default_address.phone || ''
-            } : null,
+        const responseData = {
+            customer: {
+                id: customerData.id,
+                email: customerData.email || '',
+                first_name: customerData.first_name || '',
+                last_name: customerData.last_name || '',
+                phone: customerData.phone || '',
+                orders_count: customerData.orders_count || 0,
+                total_spent: customerData.total_spent || '0',
+                created_at: customerData.created_at,
+                updated_at: customerData.updated_at,
+                state: customerData.state || 'enabled',
+                accepts_marketing: customerData.accepts_marketing || false,
+                tags: customerData.tags || '',
+                note: customerData.note || '',
+                addresses: customerData.addresses || [],
+                default_address: customerData.default_address || null
+            },
             orders: ordersResponse.data.orders.map(order => ({
                 id: order.id,
+                order_number: order.order_number,
                 name: order.name,
-                createdAt: order.created_at,
-                totalPrice: order.total_price,
-                financialStatus: order.financial_status,
-                fulfillmentStatus: order.fulfillment_status,
-                lineItems: order.line_items.map(item => ({
-                    title: item.title,
-                    quantity: item.quantity,
-                    price: item.price
-                }))
+                created_at: order.created_at,
+                total_price: order.total_price,
+                financial_status: order.financial_status,
+                fulfillment_status: order.fulfillment_status,
+                line_items: order.line_items || []
             }))
         };
 
         res.json({
             success: true,
-            data: formattedCustomer
+            data: responseData
         });
     } catch (error) {
         console.error('Error fetching customer detail:', error);
@@ -1432,43 +1428,39 @@ app.get('/api/shopify/customer/:id', authenticateToken, async (req, res) => {
         });
 
         // データを整形
-        const formattedCustomer = {
-            id: customerData.id,
-            email: customerData.email || '',
-            firstName: customerData.first_name || '',
-            lastName: customerData.last_name || '',
-            fullName: `${customerData.last_name || ''} ${customerData.first_name || ''}`.trim(),
-            phone: customerData.phone || '',
-            ordersCount: customerData.orders_count || 0,
-            totalSpent: customerData.total_spent || '0',
-            createdAt: customerData.created_at,
-            address: customerData.default_address ? {
-                address1: customerData.default_address.address1 || '',
-                address2: customerData.default_address.address2 || '',
-                city: customerData.default_address.city || '',
-                province: customerData.default_address.province || '',
-                country: customerData.default_address.country || '',
-                zip: customerData.default_address.zip || '',
-                phone: customerData.default_address.phone || ''
-            } : null,
+        const responseData = {
+            customer: {
+                id: customerData.id,
+                email: customerData.email || '',
+                first_name: customerData.first_name || '',
+                last_name: customerData.last_name || '',
+                phone: customerData.phone || '',
+                orders_count: customerData.orders_count || 0,
+                total_spent: customerData.total_spent || '0',
+                created_at: customerData.created_at,
+                updated_at: customerData.updated_at,
+                state: customerData.state || 'enabled',
+                accepts_marketing: customerData.accepts_marketing || false,
+                tags: customerData.tags || '',
+                note: customerData.note || '',
+                addresses: customerData.addresses || [],
+                default_address: customerData.default_address || null
+            },
             orders: ordersResponse.data.orders.map(order => ({
                 id: order.id,
+                order_number: order.order_number,
                 name: order.name,
-                createdAt: order.created_at,
-                totalPrice: order.total_price,
-                financialStatus: order.financial_status,
-                fulfillmentStatus: order.fulfillment_status,
-                lineItems: order.line_items.map(item => ({
-                    title: item.title,
-                    quantity: item.quantity,
-                    price: item.price
-                }))
+                created_at: order.created_at,
+                total_price: order.total_price,
+                financial_status: order.financial_status,
+                fulfillment_status: order.fulfillment_status,
+                line_items: order.line_items || []
             }))
         };
 
         res.json({
             success: true,
-            data: formattedCustomer
+            data: responseData
         });
     } catch (error) {
         console.error('Error fetching customer by ID:', error);

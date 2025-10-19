@@ -2780,19 +2780,281 @@
         }
 
         // Shopify顧客詳細表示
-        function viewShopifyCustomerDetail(customerId, email) {
-            // モーダルで詳細を表示
+        async function viewShopifyCustomerDetail(customerId, email) {
+            // まず簡易的なローディング表示
             openModal('顧客詳細', `
-                <div>
-                    <p><strong>顧客ID:</strong> ${customerId}</p>
-                    <p><strong>メールアドレス:</strong> ${email}</p>
-                    <div style="text-align: center; margin-top: 20px;">
-                        <a href="/customer-detail.html?email=${encodeURIComponent(email)}" target="_blank" class="btn btn-primary">
-                            詳細ページへ
-                        </a>
+                <div style="text-align: center; padding: 2rem;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">読み込み中...</span>
                     </div>
+                    <p style="margin-top: 1rem;">顧客情報を読み込んでいます...</p>
                 </div>
             `);
+
+            try {
+                // 顧客の詳細情報を取得
+                const token = localStorage.getItem('kanucard_admin_token');
+                const response = await fetch(`/api/shopify/customer?id=${customerId}`, {
+                    headers: {
+                        'Authorization': token ? `Bearer ${token}` : '',
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success && data.data) {
+                    const customer = data.data.customer;
+                    const orders = data.data.orders || [];
+
+                    // 詳細情報を表示
+                    const modalContent = `
+                        <div style="max-height: 70vh; overflow-y: auto;">
+                            <!-- タブナビゲーション -->
+                            <div class="nav nav-tabs" id="customerDetailTabs" role="tablist">
+                                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#basicInfo" type="button">
+                                    基本情報
+                                </button>
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#orderHistory" type="button">
+                                    注文履歴
+                                </button>
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#addressInfo" type="button">
+                                    住所情報
+                                </button>
+                            </div>
+
+                            <!-- タブコンテンツ -->
+                            <div class="tab-content" style="padding: 1.5rem;">
+                                <!-- 基本情報タブ -->
+                                <div class="tab-pane fade show active" id="basicInfo" role="tabpanel">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <h5 style="color: #667eea; margin-bottom: 1rem;">顧客情報</h5>
+                                            <table class="table table-borderless">
+                                                <tr>
+                                                    <th style="width: 40%;">顧客ID:</th>
+                                                    <td>${customer.id || '-'}</td>
+                                                </tr>
+                                                <tr>
+                                                    <th>氏名:</th>
+                                                    <td><strong>${customer.first_name || ''} ${customer.last_name || ''}</strong></td>
+                                                </tr>
+                                                <tr>
+                                                    <th>メール:</th>
+                                                    <td>
+                                                        <a href="mailto:${customer.email}" style="color: #667eea;">
+                                                            ${customer.email || '-'}
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <th>電話番号:</th>
+                                                    <td>${customer.phone || '-'}</td>
+                                                </tr>
+                                                <tr>
+                                                    <th>登録日:</th>
+                                                    <td>${customer.created_at ? new Date(customer.created_at).toLocaleString('ja-JP') : '-'}</td>
+                                                </tr>
+                                                <tr>
+                                                    <th>最終更新:</th>
+                                                    <td>${customer.updated_at ? new Date(customer.updated_at).toLocaleString('ja-JP') : '-'}</td>
+                                                </tr>
+                                            </table>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <h5 style="color: #667eea; margin-bottom: 1rem;">購入統計</h5>
+                                            <table class="table table-borderless">
+                                                <tr>
+                                                    <th style="width: 40%;">注文回数:</th>
+                                                    <td><span class="badge badge-primary">${customer.orders_count || 0}回</span></td>
+                                                </tr>
+                                                <tr>
+                                                    <th>総購入額:</th>
+                                                    <td><strong style="color: #fb923c;">¥${parseFloat(customer.total_spent || 0).toLocaleString()}</strong></td>
+                                                </tr>
+                                                <tr>
+                                                    <th>平均購入額:</th>
+                                                    <td>¥${customer.orders_count > 0 ? Math.floor(parseFloat(customer.total_spent || 0) / customer.orders_count).toLocaleString() : 0}</td>
+                                                </tr>
+                                                <tr>
+                                                    <th>ステータス:</th>
+                                                    <td>
+                                                        <span class="badge ${customer.state === 'enabled' ? 'badge-success' : 'badge-secondary'}">
+                                                            ${customer.state === 'enabled' ? 'アクティブ' : '無効'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <th>メール購読:</th>
+                                                    <td>
+                                                        <span class="badge ${customer.accepts_marketing ? 'badge-success' : 'badge-secondary'}">
+                                                            ${customer.accepts_marketing ? '購読中' : '未購読'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <th>タグ:</th>
+                                                    <td>${customer.tags ? customer.tags.split(',').map(tag => `<span class="badge badge-info" style="margin-right: 4px;">${tag.trim()}</span>`).join('') : '-'}</td>
+                                                </tr>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    ${customer.note ? `
+                                        <div style="margin-top: 1rem;">
+                                            <h5 style="color: #667eea;">備考</h5>
+                                            <div class="alert alert-info">${customer.note}</div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+
+                                <!-- 注文履歴タブ -->
+                                <div class="tab-pane fade" id="orderHistory" role="tabpanel">
+                                    <h5 style="color: #667eea; margin-bottom: 1rem;">注文履歴（最新${orders.length}件）</h5>
+                                    ${orders.length > 0 ? `
+                                        <div class="table-responsive">
+                                            <table class="table table-hover">
+                                                <thead style="background: #f8f9fa;">
+                                                    <tr>
+                                                        <th>注文番号</th>
+                                                        <th>日時</th>
+                                                        <th>商品数</th>
+                                                        <th>金額</th>
+                                                        <th>ステータス</th>
+                                                        <th>配送状況</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    ${orders.map(order => `
+                                                        <tr>
+                                                            <td>
+                                                                <a href="#" style="color: #667eea;">
+                                                                    #${order.order_number || order.id}
+                                                                </a>
+                                                            </td>
+                                                            <td>${new Date(order.created_at).toLocaleDateString('ja-JP')}</td>
+                                                            <td>${order.line_items ? order.line_items.length : 0}点</td>
+                                                            <td><strong>¥${parseFloat(order.total_price || 0).toLocaleString()}</strong></td>
+                                                            <td>
+                                                                <span class="badge badge-${order.financial_status === 'paid' ? 'success' : 'warning'}">
+                                                                    ${order.financial_status === 'paid' ? '支払済' : order.financial_status || '未払い'}
+                                                                </span>
+                                                            </td>
+                                                            <td>
+                                                                <span class="badge badge-${order.fulfillment_status ? 'success' : 'secondary'}">
+                                                                    ${order.fulfillment_status === 'fulfilled' ? '発送済' : order.fulfillment_status || '未発送'}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    `).join('')}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ` : `
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-info-circle"></i> 注文履歴はありません
+                                        </div>
+                                    `}
+                                </div>
+
+                                <!-- 住所情報タブ -->
+                                <div class="tab-pane fade" id="addressInfo" role="tabpanel">
+                                    <h5 style="color: #667eea; margin-bottom: 1rem;">配送先住所</h5>
+                                    ${customer.addresses && customer.addresses.length > 0 ? `
+                                        <div class="row">
+                                            ${customer.addresses.map((addr, index) => `
+                                                <div class="col-md-6 mb-3">
+                                                    <div class="card">
+                                                        <div class="card-header">
+                                                            住所 ${index + 1}
+                                                            ${addr.default ? '<span class="badge badge-primary float-right">デフォルト</span>' : ''}
+                                                        </div>
+                                                        <div class="card-body">
+                                                            <p><strong>${addr.first_name || ''} ${addr.last_name || ''}</strong></p>
+                                                            ${addr.company ? `<p>${addr.company}</p>` : ''}
+                                                            <p>〒${addr.zip || ''}</p>
+                                                            <p>${addr.province || ''} ${addr.city || ''}</p>
+                                                            <p>${addr.address1 || ''}</p>
+                                                            ${addr.address2 ? `<p>${addr.address2}</p>` : ''}
+                                                            ${addr.phone ? `<p>電話: ${addr.phone}</p>` : ''}
+                                                            <p>国: ${addr.country || ''}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    ` : `
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-info-circle"></i> 登録された住所はありません
+                                        </div>
+                                    `}
+                                </div>
+                            </div>
+
+                            <!-- アクションボタン -->
+                            <div style="border-top: 1px solid #dee2e6; padding-top: 1rem; margin-top: 1rem;">
+                                <div class="row">
+                                    <div class="col-6">
+                                        <a href="/customer-detail.html?id=${customerId}" target="_blank" class="btn btn-outline-primary btn-block">
+                                            <i class="fas fa-external-link-alt"></i> 別ウィンドウで開く
+                                        </a>
+                                    </div>
+                                    <div class="col-6">
+                                        <button class="btn btn-secondary btn-block" onclick="closeModal()">
+                                            閉じる
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    // モーダルの内容を更新
+                    document.getElementById('modalTitle').textContent = `顧客詳細 - ${customer.first_name || ''} ${customer.last_name || ''}`;
+                    document.getElementById('modalBody').innerHTML = modalContent;
+
+                    // タブ機能を有効化（Bootstrap風の実装）
+                    setupCustomerDetailTabs();
+                } else {
+                    throw new Error(data.message || '顧客情報の取得に失敗しました');
+                }
+            } catch (error) {
+                console.error('顧客詳細取得エラー:', error);
+                document.getElementById('modalBody').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        顧客情報の取得に失敗しました<br>
+                        ${error.message}
+                    </div>
+                    <div style="text-align: center; margin-top: 1rem;">
+                        <button class="btn btn-secondary" onclick="closeModal()">閉じる</button>
+                    </div>
+                `;
+            }
+        }
+
+        // タブ機能のセットアップ
+        function setupCustomerDetailTabs() {
+            const tabButtons = document.querySelectorAll('#customerDetailTabs button');
+            const tabPanes = document.querySelectorAll('.tab-pane');
+
+            tabButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+
+                    // すべてのタブボタンとペインを非アクティブに
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    tabPanes.forEach(pane => {
+                        pane.classList.remove('show', 'active');
+                    });
+
+                    // クリックされたタブをアクティブに
+                    button.classList.add('active');
+                    const targetId = button.getAttribute('data-bs-target');
+                    const targetPane = document.querySelector(targetId);
+                    if (targetPane) {
+                        targetPane.classList.add('show', 'active');
+                    }
+                });
+            });
         }
 
         // Shopify顧客データ更新
