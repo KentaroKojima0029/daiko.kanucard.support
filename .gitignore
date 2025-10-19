@@ -45,3 +45,6 @@ temp/
 *.key
 *.crt
 *.pem
+
+# Configuration documentation with secrets
+CONFIGURATION_CHANGES.md

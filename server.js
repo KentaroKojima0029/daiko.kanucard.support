@@ -2,13 +2,15 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
-const nodemailer = require('nodemailer');
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const axios = require('axios');
+
+// メールサービスのインポート
+const { sendEmail } = require('./email-service');
 
 // データベースサービスのインポート
 const dbService = require('./services/database-service');
@@ -42,26 +44,6 @@ const DATA_DIR = './data';
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
 }
-
-// メール送信設定 (Xserver SMTP)
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'sv10210.xserver.jp',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: false,
-    auth: {
-        user: process.env.SMTP_USER || 'contact@kanucard.com',
-        pass: process.env.SMTP_PASS
-    },
-    tls: {
-        rejectUnauthorized: false,
-        ciphers: 'SSLv3'
-    },
-    connectionTimeout: 30000,
-    greetingTimeout: 20000,
-    socketTimeout: 30000,
-    logger: process.env.NODE_ENV !== 'production',
-    debug: process.env.NODE_ENV !== 'production'
-});
 
 // 認証ミドルウェア（JWT認証）
 function authenticateToken(req, res, next) {
@@ -939,7 +921,7 @@ async function sendMessageEmail(message, toEmail) {
     };
 
     try {
-        await transporter.sendMail(mailOptions);
+        await sendEmail(mailOptions);
     } catch (error) {
         console.error('Email send error:', error);
     }
@@ -971,7 +953,7 @@ async function sendApprovalEmail(approval) {
     };
 
     try {
-        await transporter.sendMail(mailOptions);
+        await sendEmail(mailOptions);
     } catch (error) {
         console.error('Approval email send error:', error);
     }
@@ -1121,7 +1103,7 @@ app.post('/api/public/psa-application', async (req, res) => {
                 `
             };
 
-            await transporter.sendMail(mailOptions);
+            await sendEmail(mailOptions);
         } catch (emailError) {
             console.error('Admin notification email error:', emailError);
             // メール送信失敗してもAPIは成功とする
@@ -1172,7 +1154,7 @@ app.post('/api/public/psa-application', async (req, res) => {
                 `
             };
 
-            await transporter.sendMail(customerMailOptions);
+            await sendEmail(customerMailOptions);
         } catch (emailError) {
             console.error('Customer confirmation email error:', emailError);
             // メール送信失敗してもAPIは成功とする
