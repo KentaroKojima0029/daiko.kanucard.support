@@ -150,7 +150,7 @@
             padding: 12px;
             text-align: left;
             border-bottom: 1px solid #e0e0e0;
-            color: #333;
+            color: #000;
         }
 
         th {
@@ -642,7 +642,7 @@
         }
 
         #shopifyCustomersTable tbody td {
-            color: #333;
+            color: #000;
             background: white;
         }
 
@@ -1007,11 +1007,15 @@
                         <div style="color: #2c3e50; font-size: 16px; margin-bottom: 10px;">🇺🇸 アメリカ発送</div>
                         <div class="schedule-date" id="currentNextShipDateUSA">未設定</div>
                         <div class="schedule-label">次回発送予定日</div>
+                        <div class="schedule-date" id="currentDeadlineDateUSA" style="font-size: 14px; margin-top: 10px;">未設定</div>
+                        <div class="schedule-label">弊社必着期限</div>
                     </div>
                     <div class="schedule-card">
                         <div style="color: #2c3e50; font-size: 16px; margin-bottom: 10px;">🇯🇵 日本発送</div>
                         <div class="schedule-date" id="currentNextShipDateJapan">未設定</div>
                         <div class="schedule-label">次回発送予定日</div>
+                        <div class="schedule-date" id="currentDeadlineDateJapan" style="font-size: 14px; margin-top: 10px;">未設定</div>
+                        <div class="schedule-label">弊社必着期限</div>
                     </div>
                 </div>
 
@@ -1023,6 +1027,10 @@
                             <input type="date" id="nextShipDateUSA">
                         </div>
                         <div class="form-group">
+                            <label>弊社必着期限</label>
+                            <input type="date" id="deadlineDateUSA">
+                        </div>
+                        <div class="form-group">
                             <label>備考</label>
                             <textarea id="scheduleNotesUSA" rows="3"></textarea>
                         </div>
@@ -1032,6 +1040,10 @@
                         <div class="form-group">
                             <label>次回発送日</label>
                             <input type="date" id="nextShipDateJapan">
+                        </div>
+                        <div class="form-group">
+                            <label>弊社必着期限</label>
+                            <input type="date" id="deadlineDateJapan">
                         </div>
                         <div class="form-group">
                             <label>備考</label>
@@ -1905,26 +1917,42 @@
 
         function updateScheduleDisplay() {
             // アメリカの発送スケジュール
-            if (currentData.schedule.usa?.nextShipDate) {
+            if (currentData.schedule.usa?.next_ship_date) {
                 document.getElementById('currentNextShipDateUSA').textContent =
-                    new Date(currentData.schedule.usa.nextShipDate).toLocaleDateString('ja-JP');
+                    new Date(currentData.schedule.usa.next_ship_date).toLocaleDateString('ja-JP');
                 document.getElementById('nextShipDateUSA').value =
-                    currentData.schedule.usa.nextShipDate.split('T')[0];
+                    currentData.schedule.usa.next_ship_date.split('T')[0];
             } else {
                 document.getElementById('currentNextShipDateUSA').textContent = '未設定';
+            }
+            if (currentData.schedule.usa?.deadline_date) {
+                document.getElementById('currentDeadlineDateUSA').textContent =
+                    new Date(currentData.schedule.usa.deadline_date).toLocaleDateString('ja-JP');
+                document.getElementById('deadlineDateUSA').value =
+                    currentData.schedule.usa.deadline_date.split('T')[0];
+            } else {
+                document.getElementById('currentDeadlineDateUSA').textContent = '未設定';
             }
             if (currentData.schedule.usa?.notes) {
                 document.getElementById('scheduleNotesUSA').value = currentData.schedule.usa.notes;
             }
 
             // 日本の発送スケジュール
-            if (currentData.schedule.japan?.nextShipDate) {
+            if (currentData.schedule.japan?.next_ship_date) {
                 document.getElementById('currentNextShipDateJapan').textContent =
-                    new Date(currentData.schedule.japan.nextShipDate).toLocaleDateString('ja-JP');
+                    new Date(currentData.schedule.japan.next_ship_date).toLocaleDateString('ja-JP');
                 document.getElementById('nextShipDateJapan').value =
-                    currentData.schedule.japan.nextShipDate.split('T')[0];
+                    currentData.schedule.japan.next_ship_date.split('T')[0];
             } else {
                 document.getElementById('currentNextShipDateJapan').textContent = '未設定';
+            }
+            if (currentData.schedule.japan?.deadline_date) {
+                document.getElementById('currentDeadlineDateJapan').textContent =
+                    new Date(currentData.schedule.japan.deadline_date).toLocaleDateString('ja-JP');
+                document.getElementById('deadlineDateJapan').value =
+                    currentData.schedule.japan.deadline_date.split('T')[0];
+            } else {
+                document.getElementById('currentDeadlineDateJapan').textContent = '未設定';
             }
             if (currentData.schedule.japan?.notes) {
                 document.getElementById('scheduleNotesJapan').value = currentData.schedule.japan.notes;
@@ -2005,19 +2033,23 @@
             const scheduleData = {
                 usa: {
                     nextShipDate: document.getElementById('nextShipDateUSA').value,
+                    deadlineDate: document.getElementById('deadlineDateUSA').value,
                     notes: document.getElementById('scheduleNotesUSA').value
                 },
                 japan: {
                     nextShipDate: document.getElementById('nextShipDateJapan').value,
+                    deadlineDate: document.getElementById('deadlineDateJapan').value,
                     notes: document.getElementById('scheduleNotesJapan').value
                 }
             };
 
             try {
+                const token = localStorage.getItem('kanucard_admin_token');
                 const response = await fetch('/api/schedule', {
                     method: 'PUT',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Authorization': token ? `Bearer ${token}` : ''
                     },
                     body: JSON.stringify(scheduleData)
                 });

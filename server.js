@@ -726,10 +726,12 @@ app.get('/api/public/schedule', (req, res) => {
         const scheduleData = {
             usa: {
                 nextShipDate: schedules.find(s => s.country === 'usa')?.next_ship_date,
+                deadlineDate: schedules.find(s => s.country === 'usa')?.deadline_date,
                 notes: schedules.find(s => s.country === 'usa')?.notes || ''
             },
             japan: {
                 nextShipDate: schedules.find(s => s.country === 'japan')?.next_ship_date,
+                deadlineDate: schedules.find(s => s.country === 'japan')?.deadline_date,
                 notes: schedules.find(s => s.country === 'japan')?.notes || ''
             },
             lastUpdated: new Date().toISOString()

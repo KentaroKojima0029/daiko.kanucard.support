@@ -366,6 +366,7 @@ class DatabaseService {
         const now = new Date().toISOString();
         queries.shippingSchedule.update.run(
             scheduleData.nextShipDate,
+            scheduleData.deadlineDate || null,
             scheduleData.notes || '',
             now,
             country
