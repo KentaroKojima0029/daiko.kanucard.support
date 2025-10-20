@@ -171,10 +171,28 @@ function initializeDatabase() {
             id TEXT PRIMARY KEY,
             country TEXT UNIQUE NOT NULL,
             next_ship_date TEXT,
+            deadline_date TEXT,
             notes TEXT,
             last_updated TEXT NOT NULL
         )
     `);
+
+    // 既存テーブルに deadline_date カラムを追加（存在しない場合）
+    try {
+        const checkColumn = db.prepare(`
+            SELECT COUNT(*) as count
+            FROM pragma_table_info('shipping_schedule')
+            WHERE name = 'deadline_date'
+        `).get();
+
+        if (checkColumn.count === 0) {
+            db.exec('ALTER TABLE shipping_schedule ADD COLUMN deadline_date TEXT');
+            console.log('✓ Added deadline_date column to shipping_schedule table');
+        }
+    } catch (error) {
+        // カラムが既に存在する場合はエラーを無視
+        console.log('deadline_date column already exists or error:', error.message);
+    }
 
     // 認証コードテーブル（SMS認証用）
     db.exec(`
@@ -473,7 +491,7 @@ const queries = {
     shippingSchedule: {
         getByCountry: db.prepare('SELECT * FROM shipping_schedule WHERE country = ?'),
         getAll: db.prepare('SELECT * FROM shipping_schedule'),
-        update: db.prepare('UPDATE shipping_schedule SET next_ship_date = ?, notes = ?, last_updated = ? WHERE country = ?')
+        update: db.prepare('UPDATE shipping_schedule SET next_ship_date = ?, deadline_date = ?, notes = ?, last_updated = ? WHERE country = ?')
     },
 
     // 認証コード関連
