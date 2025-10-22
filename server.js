@@ -1,1612 +1,491 @@
-require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
-const { v4: uuidv4 } = require('uuid');
 const path = require('path');
-const fs = require('fs');
-const bcrypt = require('bcrypt');
+const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
-const multer = require('multer');
-const axios = require('axios');
 
-// メールサービスのインポート
-const { sendEmail } = require('./email-service');
+// 環境変数の読み込み
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+}
 
-// データベースサービスのインポート
-const dbService = require('./services/database-service');
-const { initializeDatabase } = require('./database');
+// 環境変数のデバッグ出力
+console.log('========================================');
+console.log('🚀 Admin Server Starting...');
+console.log('Environment:', process.env.NODE_ENV);
+console.log('Port:', process.env.PORT || 3001);
+console.log('========================================');
+
+const { init: initDatabase, submissionQueries, kaitoriQueries, getDatabase } = require('./database');
+const logger = require('./logger');
+const { sendEmail, validateEmailConfig } = require('./email-service');
+const {
+  apiLimiter,
+  authLimiter,
+  securityHeaders,
+  notFoundHandler,
+  errorHandler,
+  requestLogger
+} = require('./middleware');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const port = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors({
-    origin: ['https://kanucard-daiko-support.onrender.com', 'https://daiko.kanucard.com', 'http://localhost:3001', 'http://localhost:3000'],
-    credentials: true
-}));
-app.use(express.json());
-app.use(express.static('public'));
-
-// セキュリティヘッダー
-app.use((req, res, next) => {
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    next();
-});
-
-// JWT Secret
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production';
-
-// データ保存用ディレクトリ
-const DATA_DIR = './data';
-if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+// Render/プロキシ環境対応
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+  console.log('Trust proxy enabled: trusting 1 hop');
+} else {
+  app.set('trust proxy', false);
+  console.log('Trust proxy disabled (development mode)');
 }
-
-// 認証ミドルウェア（JWT認証）
-function authenticateToken(req, res, next) {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (token == null) {
-        return res.status(401).json({
-            success: false,
-            message: '認証が必要です。ログインしてください。'
-        });
-    }
-
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) {
-            return res.status(403).json({
-                success: false,
-                message: 'トークンが無効です。再度ログインしてください。'
-            });
-        }
-        req.user = user;
-        next();
-    });
-}
-
-// 管理者ログミドルウェア
-function logAdminAction(action) {
-    return (req, res, next) => {
-        // レスポンス後にログ記録
-        res.on('finish', () => {
-            if (res.statusCode < 400) {
-                dbService.logAdminAction({
-                    adminUser: req.user.email,
-                    action: action,
-                    targetRequestId: req.params.id || req.params.applicationId || null,
-                    targetUserId: req.params.userId || null,
-                    details: JSON.stringify({
-                        method: req.method,
-                        path: req.path,
-                        body: req.body
-                    }),
-                    ipAddress: req.ip
-                });
-            }
-        });
-        next();
-    };
-}
-
-// ===== APIエンドポイント =====
-
-// 0. 認証エンドポイント
-// ログインエンドポイント
-app.post('/api/auth/login', async (req, res) => {
-    try {
-        const { email, password, username } = req.body;
-
-        // ユーザー名またはメールアドレスでログインを許可
-        const loginId = email || username;
-
-        // 環境変数から認証情報を取得
-        const validEmail = process.env.ADMIN_EMAIL || 'contact@kanucard.com';
-        const validPassword = process.env.ADMIN_PASSWORD || '#collection30';
-
-        // 認証チェック（ユーザー名 'admin' またはメールアドレスでログイン可能）
-        if ((loginId === 'admin' || loginId === validEmail) && password === validPassword) {
-            const user = {
-                id: 1,
-                email: validEmail,
-                username: 'admin',
-                role: 'admin'
-            };
-
-            // JWTトークン生成
-            const token = jwt.sign(user, JWT_SECRET, { expiresIn: '24h' });
-            const refreshToken = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
-
-            res.json({
-                success: true,
-                data: {
-                    token,
-                    refreshToken,
-                    user
-                }
-            });
-        } else {
-            res.status(401).json({
-                success: false,
-                message: 'メールアドレスまたはパスワードが正しくありません'
-            });
-        }
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'ログイン処理中にエラーが発生しました'
-        });
-    }
-});
-
-// ログアウトエンドポイント
-app.post('/api/auth/logout', authenticateToken, (req, res) => {
-    // JWTはステートレスなので、クライアント側でトークンを削除すれば良い
-    res.json({
-        success: true,
-        message: 'ログアウトしました'
-    });
-});
-
-// 現在のユーザー情報取得
-app.get('/api/auth/me', authenticateToken, (req, res) => {
-    res.json({
-        success: true,
-        data: req.user
-    });
-});
-
-// トークンリフレッシュ
-app.post('/api/auth/refresh', (req, res) => {
-    const { refreshToken } = req.body;
-
-    if (!refreshToken) {
-        return res.status(401).json({
-            success: false,
-            message: 'リフレッシュトークンが必要です'
-        });
-    }
-
-    jwt.verify(refreshToken, JWT_SECRET, (err, user) => {
-        if (err) {
-            return res.status(403).json({
-                success: false,
-                message: 'リフレッシュトークンが無効です'
-            });
-        }
-
-        const newUser = {
-            id: user.id,
-            email: user.email,
-            username: user.username,
-            role: user.role
-        };
-
-        const token = jwt.sign(newUser, JWT_SECRET, { expiresIn: '24h' });
-        const newRefreshToken = jwt.sign(newUser, JWT_SECRET, { expiresIn: '7d' });
-
-        res.json({
-            success: true,
-            data: {
-                token,
-                refreshToken: newRefreshToken
-            }
-        });
-    });
-});
-
-// 1. ユーザー管理
-app.get('/api/users', authenticateToken, (req, res) => {
-    try {
-        const users = dbService.getAllUsers();
-        res.json({ success: true, data: users });
-    } catch (error) {
-        console.error('Error fetching users:', error);
-        res.status(500).json({ error: 'ユーザー取得エラー' });
-    }
-});
-
-app.get('/api/users/:userId', authenticateToken, (req, res) => {
-    try {
-        const user = dbService.getUserById(req.params.userId);
-        if (!user) {
-            return res.status(404).json({ error: 'ユーザーが見つかりません' });
-        }
-        res.json({ success: true, data: user });
-    } catch (error) {
-        console.error('Error fetching user:', error);
-        res.status(500).json({ error: 'ユーザー取得エラー' });
-    }
-});
-
-app.post('/api/users', authenticateToken, (req, res) => {
-    try {
-        const user = dbService.findOrCreateUser(req.body);
-        res.json({ success: true, data: user });
-    } catch (error) {
-        console.error('Error creating user:', error);
-        res.status(500).json({ error: 'ユーザー作成エラー' });
-    }
-});
-
-// 2. PSA代行申込管理（統合版）
-app.get('/api/applications', authenticateToken, (req, res) => {
-    try {
-        const applications = dbService.getAllPSARequests();
-        res.json({ success: true, data: applications });
-    } catch (error) {
-        console.error('Error fetching applications:', error);
-        res.status(500).json({ error: '申込取得エラー' });
-    }
-});
-
-app.get('/api/applications/:id', authenticateToken, (req, res) => {
-    try {
-        const application = dbService.getPSARequestById(req.params.id);
-        if (!application) {
-            return res.status(404).json({ error: '申込が見つかりません' });
-        }
-        res.json({ success: true, data: application });
-    } catch (error) {
-        console.error('Error fetching application:', error);
-        res.status(500).json({ error: '申込取得エラー' });
-    }
-});
-
-app.post('/api/applications', authenticateToken, logAdminAction('create_application'), (req, res) => {
-    try {
-        // ユーザーの作成または取得
-        const user = dbService.findOrCreateUser({
-            email: req.body.customerEmail,
-            name: req.body.customerName,
-            phone: req.body.phoneNumber
-        });
-
-        // PSAリクエストの作成
-        const requestData = {
-            userId: user.id,
-            shopifyCustomerId: req.body.shopifyCustomerId || null,
-            status: req.body.status || 'pending',
-            country: req.body.country || null,
-            planType: req.body.planType || null,
-            serviceType: req.body.serviceType || 'psa-grading',
-            totalDeclaredValue: req.body.totalDeclaredValue || 0,
-            totalEstimatedGradingFee: req.body.totalEstimatedGradingFee || 0,
-            customerNotes: req.body.notes || null,
-            cards: req.body.cards || []
-        };
-
-        const application = dbService.createPSARequest(requestData);
-        res.json({ success: true, data: application });
-    } catch (error) {
-        console.error('Error creating application:', error);
-        res.status(500).json({ error: '申込作成エラー' });
-    }
-});
-
-app.put('/api/applications/:id', authenticateToken, logAdminAction('update_application'), (req, res) => {
-    try {
-        const application = dbService.updatePSARequestStatus(
-            req.params.id,
-            req.body.status,
-            req.body.adminNotes
-        );
-
-        if (!application) {
-            return res.status(404).json({ error: '申込が見つかりません' });
-        }
-
-        res.json({ success: true, data: application });
-    } catch (error) {
-        console.error('Error updating application:', error);
-        res.status(500).json({ error: '申込更新エラー' });
-    }
-});
-
-app.delete('/api/applications/:id', authenticateToken, logAdminAction('delete_application'), (req, res) => {
-    try {
-        // Note: データベースにはDELETE機能を追加する必要があります
-        // 現時点では status を 'deleted' に設定
-        const application = dbService.updatePSARequestStatus(req.params.id, 'deleted');
-        res.json({ success: true, data: application });
-    } catch (error) {
-        console.error('Error deleting application:', error);
-        res.status(500).json({ error: '申込削除エラー' });
-    }
-});
-
-// 3. 進捗状況管理（拡張版）
-app.get('/api/progress', authenticateToken, (req, res) => {
-    try {
-        const requests = dbService.getAllPSARequests();
-        const progressData = requests.map(req => ({
-            id: req.id,
-            applicationId: req.id,
-            steps: req.progress,
-            planDate: req.created_at,
-            country: req.country,
-            planType: req.plan_type
-        }));
-        res.json({ success: true, data: progressData });
-    } catch (error) {
-        console.error('Error fetching progress:', error);
-        res.status(500).json({ error: '進捗取得エラー' });
-    }
-});
-
-app.get('/api/progress/:applicationId', authenticateToken, (req, res) => {
-    try {
-        const application = dbService.getPSARequestById(req.params.applicationId);
-        if (!application) {
-            return res.status(404).json({ error: '申込が見つかりません' });
-        }
-
-        // 進捗データを整形
-        const progressData = {
-            id: application.id,
-            applicationId: application.id,
-            steps: {},
-            planDate: application.created_at,
-            country: application.country,
-            planType: application.plan_type,
-            createdAt: application.created_at
-        };
-
-        // ステップデータを変換
-        if (application.progress && Array.isArray(application.progress)) {
-            application.progress.forEach(step => {
-                progressData.steps[`step${step.step_number}`] = {
-                    status: step.status,
-                    date: step.timestamp,
-                    notes: step.notes
-                };
-            });
-        }
-
-        res.json({ success: true, data: progressData });
-    } catch (error) {
-        console.error('Error fetching progress:', error);
-        res.status(500).json({ error: '進捗取得エラー' });
-    }
-});
-
-app.put('/api/progress/:applicationId/step/:stepId', authenticateToken, logAdminAction('update_progress_step'), (req, res) => {
-    try {
-        const stepNumber = parseInt(req.params.stepId.replace('step', ''));
-        const application = dbService.updatePSARequestStep(
-            req.params.applicationId,
-            stepNumber,
-            req.body,
-            req.user.email
-        );
-
-        if (!application) {
-            return res.status(404).json({ error: '申込が見つかりません' });
-        }
-
-        res.json({ success: true, data: application });
-    } catch (error) {
-        console.error('Error updating progress step:', error);
-        res.status(500).json({ error: '進捗更新エラー' });
-    }
-});
-
-// 4. メッセージ管理
-app.get('/api/messages', authenticateToken, (req, res) => {
-    try {
-        // 全てのリクエストのメッセージを取得
-        const applications = dbService.getAllPSARequests();
-        const allMessages = [];
-
-        applications.forEach(app => {
-            const messages = dbService.getMessagesForRequest(app.id);
-            allMessages.push(...messages);
-        });
-
-        res.json({ success: true, data: allMessages });
-    } catch (error) {
-        console.error('Error fetching messages:', error);
-        res.status(500).json({ error: 'メッセージ取得エラー' });
-    }
-});
-
-app.post('/api/messages', authenticateToken, logAdminAction('send_message'), async (req, res) => {
-    try {
-        const messageId = dbService.createMessage({
-            requestId: req.body.requestId || null,
-            from: req.body.from || req.user.email,
-            to: req.body.to,
-            message: req.body.message
-        });
-
-        // メール送信（必要に応じて）
-        if (req.body.sendEmail && req.body.toEmail) {
-            await sendMessageEmail({
-                message: req.body.message,
-                from: req.user.email
-            }, req.body.toEmail);
-        }
-
-        res.json({ success: true, messageId: messageId });
-    } catch (error) {
-        console.error('Error creating message:', error);
-        res.status(500).json({ error: 'メッセージ作成エラー' });
-    }
-});
-
-app.put('/api/messages/:id/read', authenticateToken, (req, res) => {
-    try {
-        dbService.markMessageAsRead(req.params.id);
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Error marking message as read:', error);
-        res.status(500).json({ error: 'メッセージ更新エラー' });
-    }
-});
-
-// 5. 買取承認管理
-app.get('/api/approvals', authenticateToken, (req, res) => {
-    try {
-        const approvals = dbService.getAllApprovals();
-        res.json({ success: true, data: approvals });
-    } catch (error) {
-        console.error('Error fetching approvals:', error);
-        res.status(500).json({ error: '承認取得エラー' });
-    }
-});
-
-app.post('/api/approvals', authenticateToken, logAdminAction('create_approval'), async (req, res) => {
-    try {
-        const approvalData = {
-            approvalKey: generateApprovalKey(),
-            customerName: req.body.customerName,
-            customerEmail: req.body.customerEmail,
-            totalPrice: req.body.totalPrice || 0,
-            cards: req.body.cards || []
-        };
-
-        const approval = dbService.createApproval(approvalData);
-
-        // 承認メール送信
-        if (req.body.sendEmail) {
-            await sendApprovalEmail(approval);
-        }
-
-        res.json({ success: true, data: approval });
-    } catch (error) {
-        console.error('Error creating approval:', error);
-        res.status(500).json({ error: '承認作成エラー' });
-    }
-});
-
-// 5-1. 顧客承認ページ用エンドポイント（認証不要）
-app.get('/api/approval/:key', (req, res) => {
-    try {
-        const approvalKey = req.params.key;
-        console.log('承認データ取得要求:', approvalKey);
-
-        const approval = dbService.getApprovalByKey(approvalKey);
-
-        if (!approval) {
-            return res.status(404).json({
-                success: false,
-                message: '承認キーが無効です。正しい承認キーを入力してください。'
-            });
-        }
-
-        // 有効期限チェック
-        if (approval.deadline && new Date(approval.deadline) < new Date()) {
-            return res.status(400).json({
-                success: false,
-                message: '承認期限が過ぎています。'
-            });
-        }
-
-        // 既に回答済みかチェック
-        if (approval.status === 'submitted' || approval.status === 'responded') {
-            return res.status(400).json({
-                success: false,
-                message: 'この承認は既に回答済みです。'
-            });
-        }
-
-        // 顧客承認画面用のデータ形式に変換
-        const cards = approval.cards || [];
-        const responseData = {
-            customer: {
-                name: approval.customer_name || '未設定',
-                email: approval.customer_email || '未設定',
-                phone: '未設定'
-            },
-            cards: cards.map((card, index) => ({
-                id: index,
-                name: card.name || 'カード',
-                price: card.price || 0,
-                grade: card.grade || '未設定',
-                condition: '未設定',
-                notes: card.notes || null,
-                status: 'pending'
-            })),
-            deadline: approval.deadline || approval.expires_at
-        };
-
-        res.json({
-            success: true,
-            data: responseData
-        });
-
-    } catch (error) {
-        console.error('承認データ取得エラー:', error);
-        res.status(500).json({
-            success: false,
-            message: 'サーバーエラーが発生しました'
-        });
-    }
-});
-
-app.post('/api/approval/:key/submit', (req, res) => {
-    try {
-        const approvalKey = req.params.key;
-        const submissionData = req.body;
-
-        console.log('承認結果受信:', approvalKey, submissionData);
-
-        const approval = dbService.getApprovalByKey(approvalKey);
-
-        if (!approval) {
-            return res.status(404).json({
-                success: false,
-                message: '承認キーが無効です'
-            });
-        }
-
-        // カード承認結果を更新
-        const updatedCards = submissionData.cards || [];
-        const updateResult = dbService.updateApprovalResponse(approvalKey, {
-            status: 'submitted',
-            submittedAt: submissionData.submittedAt,
-            cards: updatedCards
-        });
-
-        if (!updateResult) {
-            return res.status(500).json({
-                success: false,
-                message: '承認結果の保存に失敗しました'
-            });
-        }
-
-        res.json({
-            success: true,
-            message: '承認結果を正常に保存しました'
-        });
-
-    } catch (error) {
-        console.error('承認結果送信エラー:', error);
-        res.status(500).json({
-            success: false,
-            message: 'サーバーエラーが発生しました'
-        });
-    }
-});
-
-// 6. サービス状況管理
-app.get('/api/service-status', (req, res) => {
-    try {
-        const services = dbService.getAllServiceStatus();
-        res.json({
-            success: true,
-            data: {
-                services: services,
-                announcement: '',
-                lastUpdated: new Date().toISOString()
-            }
-        });
-    } catch (error) {
-        console.error('Error fetching service status:', error);
-        res.status(500).json({ error: 'サービス状況取得エラー' });
-    }
-});
-
-app.put('/api/service-status', authenticateToken, logAdminAction('update_service_status'), (req, res) => {
-    try {
-        if (req.body.services && Array.isArray(req.body.services)) {
-            req.body.services.forEach(service => {
-                dbService.updateServiceStatus(service.id, service.status);
-            });
-        }
-
-        const services = dbService.getAllServiceStatus();
-        res.json({
-            success: true,
-            data: {
-                services: services,
-                announcement: req.body.announcement || '',
-                lastUpdated: new Date().toISOString()
-            }
-        });
-    } catch (error) {
-        console.error('Error updating service status:', error);
-        res.status(500).json({ error: 'サービス状況更新エラー' });
-    }
-});
-
-// 7. 発送スケジュール管理
-app.get('/api/schedule', (req, res) => {
-    try {
-        const schedules = dbService.getShippingSchedule();
-        const scheduleData = {
-            usa: schedules.find(s => s.country === 'usa'),
-            japan: schedules.find(s => s.country === 'japan'),
-            lastUpdated: new Date().toISOString()
-        };
-        res.json({ success: true, data: scheduleData });
-    } catch (error) {
-        console.error('Error fetching schedule:', error);
-        res.status(500).json({ error: 'スケジュール取得エラー' });
-    }
-});
-
-app.put('/api/schedule', authenticateToken, logAdminAction('update_schedule'), (req, res) => {
-    try {
-        if (req.body.usa) {
-            dbService.updateShippingSchedule('usa', req.body.usa);
-        }
-        if (req.body.japan) {
-            dbService.updateShippingSchedule('japan', req.body.japan);
-        }
-
-        const schedules = dbService.getShippingSchedule();
-        const scheduleData = {
-            usa: schedules.find(s => s.country === 'usa'),
-            japan: schedules.find(s => s.country === 'japan'),
-            lastUpdated: new Date().toISOString()
-        };
-
-        res.json({ success: true, data: scheduleData });
-    } catch (error) {
-        console.error('Error updating schedule:', error);
-        res.status(500).json({ error: 'スケジュール更新エラー' });
-    }
-});
-
-// 8. 統計情報
-app.get('/api/statistics', authenticateToken, (req, res) => {
-    try {
-        const stats = dbService.getStatistics();
-        const schedules = dbService.getShippingSchedule();
-        const services = dbService.getAllServiceStatus();
-
-        const fullStats = {
-            ...stats,
-            serviceStatus: services.map(s => ({
-                name: s.name,
-                status: s.status
-            })),
-            nextShipDateUSA: schedules.find(s => s.country === 'usa')?.next_ship_date,
-            nextShipDateJapan: schedules.find(s => s.country === 'japan')?.next_ship_date,
-            unreadMessages: dbService.getUnreadMessageCount('admin')
-        };
-
-        res.json({ success: true, data: fullStats });
-    } catch (error) {
-        console.error('Error fetching statistics:', error);
-        res.status(500).json({ error: '統計情報取得エラー' });
-    }
-});
-
-// 9. 利用者サイト用公開API（CORS対応）
-app.get('/api/public/service-status', (req, res) => {
-    try {
-        const services = dbService.getAllServiceStatus();
-        res.json({
-            success: true,
-            data: {
-                services: services.map(s => ({
-                    id: s.service_id,
-                    name: s.name,
-                    status: s.status
-                })),
-                announcement: ''
-            }
-        });
-    } catch (error) {
-        console.error('Error fetching public service status:', error);
-        res.status(500).json({ error: 'サービス状況取得エラー' });
-    }
-});
-
-app.get('/api/public/schedule', (req, res) => {
-    try {
-        const schedules = dbService.getShippingSchedule();
-        const scheduleData = {
-            usa: {
-                nextShipDate: schedules.find(s => s.country === 'usa')?.next_ship_date,
-                deadlineDate: schedules.find(s => s.country === 'usa')?.deadline_date,
-                notes: schedules.find(s => s.country === 'usa')?.notes || ''
-            },
-            japan: {
-                nextShipDate: schedules.find(s => s.country === 'japan')?.next_ship_date,
-                deadlineDate: schedules.find(s => s.country === 'japan')?.deadline_date,
-                notes: schedules.find(s => s.country === 'japan')?.notes || ''
-            },
-            lastUpdated: new Date().toISOString()
-        };
-        res.json({ success: true, data: scheduleData });
-    } catch (error) {
-        console.error('Error fetching public schedule:', error);
-        res.status(500).json({ error: 'スケジュール取得エラー' });
-    }
-});
-
-app.get('/api/public/application/:id/progress', (req, res) => {
-    try {
-        const application = dbService.getPSARequestById(req.params.id);
-        if (!application) {
-            return res.status(404).json({ error: '申込が見つかりません' });
-        }
-
-        const user = dbService.getUserById(application.user_id);
-
-        // 進捗ステップを整形
-        const steps = {};
-        if (application.progress && Array.isArray(application.progress)) {
-            application.progress.forEach(step => {
-                steps[`step${step.step_number}`] = {
-                    status: step.status,
-                    date: step.timestamp,
-                    notes: step.notes
-                };
-            });
-        }
-
-        res.json({
-            success: true,
-            data: {
-                application: {
-                    id: application.id,
-                    status: application.status,
-                    createdAt: application.created_at,
-                    customerName: user?.name || '顧客'
-                },
-                planInfo: {
-                    country: application.country,
-                    planType: application.plan_type
-                },
-                steps: steps
-            }
-        });
-    } catch (error) {
-        console.error('Error fetching public progress:', error);
-        res.status(500).json({ error: '進捗取得エラー' });
-    }
-});
-
-// 9-1. ユーザーフォーム送信用公開API（認証不要・CORS対応）
-app.post('/api/public/form-submit', async (req, res) => {
-    try {
-        const {
-            contactName,
-            contactEmail,
-            contactBody,
-            plan,
-            serviceOption,
-            purchaseOffer,
-            returnMethod,
-            inspectionOption,
-            items,
-            totalQuantity,
-            totalDeclaredValue,
-            totalAcquisitionValue,
-            totalFee,
-            estimatedTax,
-            estimatedGradingFee,
-            totalEstimatedFee
-        } = req.body;
-
-        // バリデーション
-        if (!contactName || !contactEmail || !items || items.length === 0) {
-            return res.status(400).json({
-                success: false,
-                error: '必須項目が不足しています'
-            });
-        }
-
-        console.log('Public form submission received:', { contactName, contactEmail, itemCount: items.length });
-
-        // プラン情報からcountryとplanTypeを抽出
-        let country = null;
-        let planType = null;
-
-        if (plan && typeof plan === 'string') {
-            if (plan.includes('日本') || plan.includes('ノーマル 日本') || plan.includes('70％保証 日本')) {
-                country = 'japan';
-            } else if (plan.includes('アメリカ') || plan.includes('USA')) {
-                country = 'usa';
-            }
-
-            if (plan.includes('ノーマル') && !plan.includes('保証')) {
-                planType = 'normal';
-            } else if (plan.includes('70％保証') || plan.includes('保証')) {
-                planType = 'guarantee';
-            }
-        }
-
-        // ユーザーの作成または取得
-        const user = dbService.findOrCreateUser({
-            email: contactEmail,
-            name: contactName,
-            phone: null
-        });
-
-        // カード情報を変換
-        const cards = items.map(item => ({
-            cardName: item.itemName,
-            quantity: item.quantity || 1,
-            declaredValue: item.declaredValue || 0,
-            acquisitionValue: item.acquisitionValue || 0
-        }));
-
-        // PSAリクエストの作成
-        const requestData = {
-            userId: user.id,
-            shopifyCustomerId: null,
-            status: 'pending',
-            country: country,
-            planType: planType,
-            serviceType: 'psa-grading',
-            totalDeclaredValue: totalDeclaredValue || 0,
-            totalEstimatedGradingFee: typeof estimatedGradingFee === 'string' ?
-                parseInt(estimatedGradingFee.replace(/[^0-9]/g, '')) :
-                (estimatedGradingFee || 0),
-            customerNotes: contactBody || null,
-            cards: cards
-        };
-
-        const application = dbService.createPSARequest(requestData);
-
-        console.log('PSA request created successfully:', application.id);
-
-        res.json({
-            success: true,
-            message: 'お申し込みを受け付けました',
-            data: {
-                applicationId: application.id,
-                userId: user.id
-            }
-        });
-
-    } catch (error) {
-        console.error('Error processing public form submission:', error);
-        res.status(500).json({
-            success: false,
-            error: 'サーバーエラーが発生しました。もう一度お試しください。'
-        });
-    }
-});
-
-// 10. 管理者ログ取得
-app.get('/api/admin/logs', authenticateToken, (req, res) => {
-    try {
-        const limit = parseInt(req.query.limit) || 100;
-        const logs = dbService.getRecentAdminLogs(limit);
-        res.json({ success: true, data: logs });
-    } catch (error) {
-        console.error('Error fetching admin logs:', error);
-        res.status(500).json({ error: 'ログ取得エラー' });
-    }
-});
-
-// 11. フォーム申請管理API（管理者用）
-// すべてのフォーム申請を取得
-app.get('/api/admin/form-submissions', authenticateToken, (req, res) => {
-    try {
-        const submissions = dbService.getAllPSARequests();
-
-        // ユーザー情報を含めて返却
-        const submissionsWithUsers = submissions.map(submission => {
-            const user = dbService.getUserById(submission.user_id);
-            return {
-                ...submission,
-                user: user ? {
-                    name: user.name,
-                    email: user.email,
-                    phone: user.phone
-                } : null
-            };
-        });
-
-        res.json({
-            success: true,
-            data: submissionsWithUsers
-        });
-    } catch (error) {
-        console.error('Error fetching form submissions:', error);
-        res.status(500).json({
-            success: false,
-            error: 'フォーム申請の取得に失敗しました'
-        });
-    }
-});
-
-// 特定のフォーム申請の詳細を取得
-app.get('/api/admin/form-submission/:id', authenticateToken, (req, res) => {
-    try {
-        const { id } = req.params;
-        const submission = dbService.getPSARequestById(id);
-
-        if (!submission) {
-            return res.status(404).json({
-                success: false,
-                error: '申請が見つかりません'
-            });
-        }
-
-        // ユーザー情報を追加
-        const user = dbService.getUserById(submission.user_id);
-        const submissionWithUser = {
-            ...submission,
-            user: user ? {
-                name: user.name,
-                email: user.email,
-                phone: user.phone
-            } : null
-        };
-
-        res.json({
-            success: true,
-            data: submissionWithUser
-        });
-    } catch (error) {
-        console.error('Error fetching form submission:', error);
-        res.status(500).json({
-            success: false,
-            error: '申請の取得に失敗しました'
-        });
-    }
-});
-
-// フォーム申請のステータスを更新
-app.put('/api/admin/form-submission/:id/status', authenticateToken, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { status, adminNotes } = req.body;
-
-        if (!status) {
-            return res.status(400).json({
-                success: false,
-                error: 'ステータスが指定されていません'
-            });
-        }
-
-        const updatedSubmission = dbService.updatePSARequestStatus(id, status, adminNotes);
-
-        if (!updatedSubmission) {
-            return res.status(404).json({
-                success: false,
-                error: '申請が見つかりません'
-            });
-        }
-
-        // 管理者ログに記録
-        dbService.logAdminAction({
-            adminUser: req.user.email,
-            action: 'update_form_submission_status',
-            targetRequestId: id,
-            details: JSON.stringify({ status, adminNotes })
-        });
-
-        res.json({
-            success: true,
-            data: updatedSubmission,
-            message: 'ステータスを更新しました'
-        });
-    } catch (error) {
-        console.error('Error updating form submission status:', error);
-        res.status(500).json({
-            success: false,
-            error: 'ステータスの更新に失敗しました'
-        });
-    }
-});
-
-// メール送信関数
-async function sendMessageEmail(message, toEmail) {
-    const mailOptions = {
-        from: `PSA代行サービス <${process.env.SMTP_USER || 'contact@kanucard.com'}>`,
-        to: toEmail,
-        subject: 'PSA代行サービスからのメッセージ',
-        html: `
-            <div style="max-width: 600px; margin: 0 auto; font-family: sans-serif;">
-                <h2>新しいメッセージがあります</h2>
-                <div style="background: #f5f5f5; padding: 20px; border-radius: 8px;">
-                    <p>${message.message}</p>
-                </div>
-                <p style="margin-top: 20px;">
-                    <a href="https://kanucard-daiko-support.onrender.com/mypage" style="background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-                        マイページで確認
-                    </a>
-                </p>
-            </div>
-        `
-    };
-
-    try {
-        await sendEmail(mailOptions);
-    } catch (error) {
-        console.error('Email send error:', error);
-    }
-}
-
-async function sendApprovalEmail(approval) {
-    const approvalUrl = `https://kanucard-daiko-support.onrender.com/approval/${approval.approval_key}`;
-
-    const mailOptions = {
-        from: `PSA代行サービス <${process.env.SMTP_USER || 'contact@kanucard.com'}>`,
-        to: approval.customer_email,
-        subject: `【PSA代行】買取承認のお願い - ${approval.customer_name}様`,
-        html: `
-            <div style="max-width: 800px; margin: 0 auto; font-family: sans-serif;">
-                <h1 style="color: #667eea;">PSA代行 買取承認のお願い</h1>
-                <p>${approval.customer_name}様</p>
-                <p>以下のカードの買取価格についてご確認をお願いします。</p>
-                <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                    <p><strong>承認キー:</strong> ${approval.approval_key}</p>
-                    <p><strong>総額:</strong> ¥${(approval.total_price || 0).toLocaleString()}</p>
-                </div>
-                <p>
-                    <a href="${approvalUrl}" style="display: inline-block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px;">
-                        承認ページを開く
-                    </a>
-                </p>
-            </div>
-        `
-    };
-
-    try {
-        await sendEmail(mailOptions);
-    } catch (error) {
-        console.error('Approval email send error:', error);
-    }
-}
-
-function generateApprovalKey() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let key = '';
-    for (let i = 0; i < 16; i++) {
-        if (i > 0 && i % 4 === 0) key += '-';
-        key += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return key;
-}
-
-// ファイルアップロード設定
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = path.join(DATA_DIR, 'uploads');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
-const upload = multer({ storage: storage });
-
-// ファイルアップロードエンドポイント
-app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: 'ファイルがアップロードされていません' });
-    }
-    res.json({
-        success: true,
-        file: {
-            filename: req.file.filename,
-            originalname: req.file.originalname,
-            size: req.file.size,
-            path: req.file.path
-        }
-    });
-});
-
-// 公開API（認証不要）- 顧客用PSA申請フォーム送信
-app.post('/api/public/psa-application', async (req, res) => {
-    try {
-        const applicationData = req.body;
-
-        // 必須項目の検証
-        if (!applicationData.customerName || !applicationData.customerEmail || !applicationData.customerPhone) {
-            return res.status(400).json({
-                success: false,
-                message: '必須項目が入力されていません'
-            });
-        }
-
-        // 申請IDを生成
-        const applicationId = 'PSA-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-
-        // ユーザーの作成または取得
-        const user = dbService.findOrCreateUser({
-            email: applicationData.customerEmail,
-            name: applicationData.customerName,
-            phone: applicationData.customerPhone
-        });
-
-        // PSA申請データを保存
-        const psaRequest = dbService.createPSARequest({
-            userId: user.id,
-            applicationId: applicationId,
-            shopifyCustomerId: null,
-            status: 'pending',
-            country: applicationData.country || 'Japan',
-            cards: applicationData.cards || [],
-            cardCount: applicationData.cardCount || 0,
-            serviceType: applicationData.serviceType || 'standard',
-            specialRequests: applicationData.specialRequests || '',
-            unitPrice: applicationData.unitPrice || 0,
-            totalAmount: applicationData.totalAmount || 0,
-            postalCode: applicationData.postalCode || '',
-            address: applicationData.address || '',
-            submittedAt: applicationData.submittedAt || new Date().toISOString(),
-            adminNotes: '',
-            lastUpdated: new Date().toISOString()
-        });
-
-        // 管理者にメール通知を送信
-        try {
-            const adminEmail = process.env.ADMIN_EMAIL || 'contact@kanucard.com';
-
-            const mailOptions = {
-                from: process.env.FROM_EMAIL || 'contact@kanucard.com',
-                to: adminEmail,
-                subject: `【新規申込】PSA鑑定代行申込 - ${applicationData.customerName}`,
-                html: `
-                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
-                        <h2 style="color: #667eea;">新規PSA鑑定代行申込</h2>
-
-                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                            <h3>お客様情報</h3>
-                            <p><strong>申込ID:</strong> ${applicationId}</p>
-                            <p><strong>お名前:</strong> ${applicationData.customerName}</p>
-                            <p><strong>メール:</strong> ${applicationData.customerEmail}</p>
-                            <p><strong>電話番号:</strong> ${applicationData.customerPhone}</p>
-                            <p><strong>住所:</strong> ${applicationData.postalCode} ${applicationData.address}</p>
-                        </div>
-
-                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                            <h3>申込内容</h3>
-                            <p><strong>カード枚数:</strong> ${applicationData.cardCount}枚</p>
-                            <p><strong>サービス:</strong> ${applicationData.serviceType === 'express' ? 'エクスプレス' : 'スタンダード'}</p>
-                            <p><strong>合計金額:</strong> ¥${applicationData.totalAmount?.toLocaleString() || 0}</p>
-                            <p><strong>申込日時:</strong> ${new Date(applicationData.submittedAt).toLocaleString('ja-JP')}</p>
-                        </div>
-
-                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                            <h3>カード詳細</h3>
-                            ${applicationData.cards.map((card, index) => `
-                                <div style="border-bottom: 1px solid #dee2e6; padding: 10px 0;">
-                                    <p><strong>カード ${index + 1}:</strong> ${card.name}</p>
-                                    <p>セット: ${card.set || 'なし'} / 番号: ${card.number || 'なし'}</p>
-                                    <p>言語: ${card.language || '日本語'} / 期待グレード: ${card.expectedGrade || '不明'}</p>
-                                    ${card.notes ? `<p>備考: ${card.notes}</p>` : ''}
-                                </div>
-                            `).join('')}
-                        </div>
-
-                        ${applicationData.specialRequests ? `
-                        <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                            <h3>特記事項</h3>
-                            <p>${applicationData.specialRequests}</p>
-                        </div>
-                        ` : ''}
-
-                        <div style="text-align: center; margin: 30px 0;">
-                            <a href="${process.env.BASE_URL || 'http://localhost:3000'}/admin.html"
-                               style="background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                                管理画面で確認する
-                            </a>
-                        </div>
-                    </div>
-                `
-            };
-
-            await sendEmail(mailOptions);
-        } catch (emailError) {
-            console.error('Admin notification email error:', emailError);
-            // メール送信失敗してもAPIは成功とする
-        }
-
-        // 顧客に確認メールを送信
-        try {
-            const customerMailOptions = {
-                from: process.env.FROM_EMAIL || 'contact@kanucard.com',
-                to: applicationData.customerEmail,
-                subject: `【申込受付】PSA鑑定代行申込を受け付けました - ${applicationId}`,
-                html: `
-                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
-                        <h2 style="color: #667eea;">PSA鑑定代行申込を受け付けました</h2>
-
-                        <p>${applicationData.customerName} 様</p>
-
-                        <p>この度はPSA鑑定代行サービスにお申し込みいただき、誠にありがとうございます。<br>
-                        以下の内容で申込を受け付けました。</p>
-
-                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                            <h3>申込内容</h3>
-                            <p><strong>申込ID:</strong> ${applicationId}</p>
-                            <p><strong>カード枚数:</strong> ${applicationData.cardCount}枚</p>
-                            <p><strong>サービス:</strong> ${applicationData.serviceType === 'express' ? 'エクスプレスサービス' : 'スタンダードサービス'}</p>
-                            <p><strong>合計金額:</strong> ¥${applicationData.totalAmount?.toLocaleString() || 0}（税込）</p>
-                        </div>
-
-                        <h3>今後の流れ</h3>
-                        <ol style="line-height: 1.8;">
-                            <li>24時間以内に、カード発送の詳細手順をメールでご案内いたします</li>
-                            <li>カードを指定の方法で弊社にお送りください</li>
-                            <li>カード到着後、状態を確認してPSAへ提出いたします</li>
-                            <li>鑑定完了後、結果をお知らせし、返送いたします</li>
-                        </ol>
-
-                        <p style="color: #666; margin-top: 30px;">
-                        ご不明な点がございましたら、このメールに返信いただくか、<br>
-                        以下の連絡先までお問い合わせください。
-                        </p>
-
-                        <div style="border-top: 1px solid #dee2e6; margin-top: 30px; padding-top: 20px; color: #666;">
-                            <p>KanuCard PSA鑑定代行サービス<br>
-                            Email: contact@kanucard.com<br>
-                            営業時間: 平日 10:00-18:00</p>
-                        </div>
-                    </div>
-                `
-            };
-
-            await sendEmail(customerMailOptions);
-        } catch (emailError) {
-            console.error('Customer confirmation email error:', emailError);
-            // メール送信失敗してもAPIは成功とする
-        }
-
-        res.json({
-            success: true,
-            data: {
-                applicationId: applicationId,
-                message: '申込を受け付けました。確認メールをお送りしましたのでご確認ください。'
-            }
-        });
-
-    } catch (error) {
-        console.error('PSA application error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'サーバーエラーが発生しました。時間をおいて再度お試しください。'
-        });
-    }
-});
-
-// GET /api/psa-requests - PSA申請一覧を取得
-app.get('/api/psa-requests', authenticateToken, async (req, res) => {
-    try {
-        const requests = dbService.getAllPSARequests();
-
-        // 各申請にユーザー情報を含める
-        const requestsWithUserInfo = requests.map(request => {
-            const user = dbService.getUserById(request.userId);
-            return {
-                ...request,
-                customerName: user ? user.name : 'Unknown',
-                customerEmail: user ? user.email : '',
-                customerPhone: user ? user.phone : ''
-            };
-        });
-
-        res.json({
-            success: true,
-            data: requestsWithUserInfo
-        });
-    } catch (error) {
-        console.error('PSA申請一覧取得エラー:', error);
-        res.status(500).json({
-            success: false,
-            message: 'PSA申請一覧の取得に失敗しました'
-        });
-    }
-});
-
-// Shopify API エンドポイント
-// 顧客一覧取得（実際のShopifyデータ）
-app.get('/api/shopify/customers', authenticateToken, async (req, res) => {
-    // キャッシュヘッダーを設定（ブラウザキャッシュ1分）
-    res.setHeader('Cache-Control', 'public, max-age=60');
-
-    try {
-        const shopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
-        const accessToken = process.env.SHOPIFY_ADMIN_API_KEY;
-        const apiVersion = process.env.SHOPIFY_API_VERSION || '2024-10';
-
-        if (!shopifyDomain || !accessToken) {
-            throw new Error('Shopify設定が不足しています');
-        }
-
-        // Shopify Admin API URLを構築
-        const apiUrl = `https://${shopifyDomain}/admin/api/${apiVersion}/customers.json`;
-
-        // Shopify APIから顧客データを取得
-        const response = await axios.get(apiUrl, {
-            headers: {
-                'X-Shopify-Access-Token': accessToken,
-                'Content-Type': 'application/json'
-            },
-            params: {
-                limit: 250, // 最大250件まで取得
-                fields: 'id,email,first_name,last_name,phone,orders_count,total_spent,created_at,default_address,state'
-            }
-        });
-
-        // Shopifyのデータを整形
-        const customers = response.data.customers.map(customer => ({
-            id: customer.id,
-            email: customer.email || '',
-            firstName: customer.first_name || '',
-            lastName: customer.last_name || '',
-            fullName: `${customer.last_name || ''} ${customer.first_name || ''}`.trim(),
-            phone: customer.phone || '',
-            ordersCount: customer.orders_count || 0,
-            totalSpent: customer.total_spent || '0',
-            createdAt: customer.created_at,
-            state: customer.state || 'enabled',
-            address: customer.default_address ? {
-                address1: customer.default_address.address1 || '',
-                address2: customer.default_address.address2 || '',
-                city: customer.default_address.city || '',
-                province: customer.default_address.province || '',
-                country: customer.default_address.country || '',
-                zip: customer.default_address.zip || '',
-                phone: customer.default_address.phone || ''
-            } : null
-        }));
-
-        res.json({
-            success: true,
-            data: {
-                customers: customers,
-                total: customers.length
-            }
-        });
-    } catch (error) {
-        console.error('Error fetching Shopify customers:', error);
-
-        // エラーの詳細をログに記録
-        if (error.response) {
-            console.error('Shopify API Error:', error.response.data);
-            console.error('Status:', error.response.status);
-        }
-
-        res.status(500).json({
-            success: false,
-            message: 'Shopify顧客データの取得に失敗しました',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-});
-
-// 顧客詳細取得（メールアドレスまたはIDで取得）
-app.get('/api/shopify/customer', authenticateToken, async (req, res) => {
-    try {
-        const { email, id } = req.query;
-        const shopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
-        const accessToken = process.env.SHOPIFY_ADMIN_API_KEY;
-        const apiVersion = process.env.SHOPIFY_API_VERSION || '2024-10';
-
-        if (!shopifyDomain || !accessToken) {
-            throw new Error('Shopify設定が不足しています');
-        }
-
-        let customerData = null;
-
-        // メールアドレスまたはIDで顧客を検索
-        if (email) {
-            const searchUrl = `https://${shopifyDomain}/admin/api/${apiVersion}/customers/search.json?query=email:${encodeURIComponent(email)}`;
-            const searchResponse = await axios.get(searchUrl, {
-                headers: {
-                    'X-Shopify-Access-Token': accessToken,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (searchResponse.data.customers && searchResponse.data.customers.length > 0) {
-                customerData = searchResponse.data.customers[0];
-            }
-        } else if (id) {
-            const customerUrl = `https://${shopifyDomain}/admin/api/${apiVersion}/customers/${id}.json`;
-            const customerResponse = await axios.get(customerUrl, {
-                headers: {
-                    'X-Shopify-Access-Token': accessToken,
-                    'Content-Type': 'application/json'
-                }
-            });
-            customerData = customerResponse.data.customer;
-        }
-
-        if (!customerData) {
-            return res.status(404).json({
-                success: false,
-                message: '顧客が見つかりません'
-            });
-        }
-
-        // 顧客の注文履歴を取得
-        const ordersUrl = `https://${shopifyDomain}/admin/api/${apiVersion}/customers/${customerData.id}/orders.json`;
-        const ordersResponse = await axios.get(ordersUrl, {
-            headers: {
-                'X-Shopify-Access-Token': accessToken,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        // データを整形
-        const responseData = {
-            customer: {
-                id: customerData.id,
-                email: customerData.email || '',
-                first_name: customerData.first_name || '',
-                last_name: customerData.last_name || '',
-                phone: customerData.phone || '',
-                orders_count: customerData.orders_count || 0,
-                total_spent: customerData.total_spent || '0',
-                created_at: customerData.created_at,
-                updated_at: customerData.updated_at,
-                state: customerData.state || 'enabled',
-                accepts_marketing: customerData.accepts_marketing || false,
-                tags: customerData.tags || '',
-                note: customerData.note || '',
-                addresses: customerData.addresses || [],
-                default_address: customerData.default_address || null
-            },
-            orders: ordersResponse.data.orders.map(order => ({
-                id: order.id,
-                order_number: order.order_number,
-                name: order.name,
-                created_at: order.created_at,
-                total_price: order.total_price,
-                financial_status: order.financial_status,
-                fulfillment_status: order.fulfillment_status,
-                line_items: order.line_items || []
-            }))
-        };
-
-        res.json({
-            success: true,
-            data: responseData
-        });
-    } catch (error) {
-        console.error('Error fetching customer detail:', error);
-
-        if (error.response) {
-            console.error('Shopify API Error:', error.response.data);
-        }
-
-        res.status(500).json({
-            success: false,
-            message: '顧客詳細の取得に失敗しました'
-        });
-    }
-});
-
-// 顧客詳細取得（ID指定）
-app.get('/api/shopify/customer/:id', authenticateToken, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const shopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
-        const accessToken = process.env.SHOPIFY_ADMIN_API_KEY;
-        const apiVersion = process.env.SHOPIFY_API_VERSION || '2024-10';
-
-        if (!shopifyDomain || !accessToken) {
-            throw new Error('Shopify設定が不足しています');
-        }
-
-        // IDで顧客データを取得
-        const customerUrl = `https://${shopifyDomain}/admin/api/${apiVersion}/customers/${id}.json`;
-        const customerResponse = await axios.get(customerUrl, {
-            headers: {
-                'X-Shopify-Access-Token': accessToken,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        const customerData = customerResponse.data.customer;
-
-        // 顧客の注文履歴を取得
-        const ordersUrl = `https://${shopifyDomain}/admin/api/${apiVersion}/customers/${customerData.id}/orders.json`;
-        const ordersResponse = await axios.get(ordersUrl, {
-            headers: {
-                'X-Shopify-Access-Token': accessToken,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        // データを整形
-        const responseData = {
-            customer: {
-                id: customerData.id,
-                email: customerData.email || '',
-                first_name: customerData.first_name || '',
-                last_name: customerData.last_name || '',
-                phone: customerData.phone || '',
-                orders_count: customerData.orders_count || 0,
-                total_spent: customerData.total_spent || '0',
-                created_at: customerData.created_at,
-                updated_at: customerData.updated_at,
-                state: customerData.state || 'enabled',
-                accepts_marketing: customerData.accepts_marketing || false,
-                tags: customerData.tags || '',
-                note: customerData.note || '',
-                addresses: customerData.addresses || [],
-                default_address: customerData.default_address || null
-            },
-            orders: ordersResponse.data.orders.map(order => ({
-                id: order.id,
-                order_number: order.order_number,
-                name: order.name,
-                created_at: order.created_at,
-                total_price: order.total_price,
-                financial_status: order.financial_status,
-                fulfillment_status: order.fulfillment_status,
-                line_items: order.line_items || []
-            }))
-        };
-
-        res.json({
-            success: true,
-            data: responseData
-        });
-    } catch (error) {
-        console.error('Error fetching customer by ID:', error);
-
-        if (error.response) {
-            console.error('Shopify API Error:', error.response.data);
-            console.error('Status:', error.response.status);
-        }
-
-        res.status(500).json({
-            success: false,
-            message: '顧客詳細の取得に失敗しました'
-        });
-    }
-});
-
-// 静的ファイル配信
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
-
-// ヘルスチェックエンドポイント
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'ok',
-        database: 'connected',
-        timestamp: new Date().toISOString()
-    });
-});
 
 // データベース初期化
-console.log('Initializing database...');
-initializeDatabase();
+initDatabase();
 
-// サーバー起動
-app.listen(PORT, () => {
-    console.log(`PSA Admin System (Integrated) running on port ${PORT}`);
-    console.log(`Admin Dashboard: http://localhost:${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`Database: SQLite`);
+// セキュリティヘッダーとロギング
+app.use(securityHeaders);
+app.use(requestLogger);
+
+// CORS設定（外部からのアクセス用）
+app.use((req, res, next) => {
+  const allowedOrigins = [
+    'https://daiko.kanucard.com',
+    'https://kanucard-daiko-support.onrender.com',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    process.env.ADMIN_ORIGIN
+  ].filter(Boolean);
+
+  const origin = req.headers.origin;
+
+  if (!origin) {
+    return next();
+  }
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+
+  next();
 });
 
-module.exports = app;
+// Body parser
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser());
+
+// 静的ファイルの配信
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '1d',
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  }
+}));
+
+// ルートパスを管理者ログインページにリダイレクト
+app.get('/', (req, res) => {
+  res.redirect('/admin/login.html');
+});
+
+// ===== JWT設定 =====
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production';
+
+// ===== 管理者認証 =====
+// 管理者ログインAPI
+app.post('/api/admin/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    console.log('[Admin Login] ログイン試行:', { email });
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'メールアドレスとパスワードが必要です'
+      });
+    }
+
+    // 管理者認証情報
+    const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'collection@kanucard.com';
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '#collection30';
+
+    // メールアドレスとパスワードの検証
+    if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
+      logger.warn('Failed admin login attempt', { email });
+      console.log('[Admin Login] ❌ ログイン失敗 - 認証情報が不正');
+      return res.status(401).json({
+        success: false,
+        message: 'メールアドレスまたはパスワードが正しくありません'
+      });
+    }
+
+    // JWT トークン生成
+    const token = jwt.sign(
+      {
+        email: ADMIN_EMAIL,
+        role: 'admin',
+        loginAt: Date.now()
+      },
+      JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+
+    logger.info('Admin logged in successfully', { email });
+    console.log('[Admin Login] ✅ ログイン成功');
+
+    res.json({
+      success: true,
+      message: '管理者ログインに成功しました',
+      token,
+      user: {
+        email: ADMIN_EMAIL,
+        role: 'admin'
+      }
+    });
+
+  } catch (error) {
+    console.error('[Admin Login] エラー:', error);
+    logger.error('Admin login error', {
+      error: error.message,
+      email: req.body.email
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'システムエラーが発生しました'
+    });
+  }
+});
+
+// 管理者認証ミドルウェア
+const authenticateAdmin = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: '認証が必要です'
+    });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({
+        success: false,
+        message: 'トークンが無効です'
+      });
+    }
+
+    // 管理者権限チェック
+    if (user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: '管理者権限が必要です'
+      });
+    }
+
+    req.user = user;
+    next();
+  });
+};
+
+// ===== 管理者用API =====
+
+// 代行案件一覧取得
+app.get('/api/agency-requests', authenticateAdmin, (req, res) => {
+  const db = getDatabase();
+
+  try {
+    const requests = db.prepare(`
+      SELECT * FROM agency_requests
+      ORDER BY created_at DESC
+    `).all();
+
+    res.json(requests);
+  } catch (error) {
+    logger.error('Error fetching agency requests', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'データ取得エラー'
+    });
+  }
+});
+
+// 代行案件詳細取得
+app.get('/api/agency-request/:id', authenticateAdmin, (req, res) => {
+  const db = getDatabase();
+
+  try {
+    const request = db.prepare(`
+      SELECT * FROM agency_requests WHERE id = ?
+    `).get(req.params.id);
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: '案件が見つかりません'
+      });
+    }
+
+    res.json(request);
+  } catch (error) {
+    logger.error('Error fetching agency request', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'データ取得エラー'
+    });
+  }
+});
+
+// 代行案件ステータス更新
+app.patch('/api/agency-request/:id/status', authenticateAdmin, (req, res) => {
+  const db = getDatabase();
+  const { status } = req.body;
+
+  try {
+    const update = db.prepare(`
+      UPDATE agency_requests
+      SET status = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    const result = update.run(status, req.params.id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({
+        success: false,
+        message: '案件が見つかりません'
+      });
+    }
+
+    logger.info('Agency request status updated', {
+      id: req.params.id,
+      status,
+      admin: req.user.email
+    });
+
+    res.json({
+      success: true,
+      message: 'ステータスを更新しました'
+    });
+  } catch (error) {
+    logger.error('Error updating agency request status', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'ステータス更新エラー'
+    });
+  }
+});
+
+// 承認申請一覧取得
+app.get('/api/approval-requests', authenticateAdmin, (req, res) => {
+  const db = getDatabase();
+
+  try {
+    const requests = db.prepare(`
+      SELECT * FROM approval_requests
+      ORDER BY created_at DESC
+    `).all();
+
+    res.json(requests);
+  } catch (error) {
+    logger.error('Error fetching approval requests', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'データ取得エラー'
+    });
+  }
+});
+
+// 承認申請作成
+app.post('/api/approval-request', authenticateAdmin, async (req, res) => {
+  const db = getDatabase();
+  const { customerEmail, customerName, cards } = req.body;
+
+  try {
+    // 承認申請を作成
+    const approvalKey = require('crypto').randomBytes(16).toString('hex');
+
+    const insert = db.prepare(`
+      INSERT INTO approval_requests (
+        approval_key, customer_email, customer_name, status
+      ) VALUES (?, ?, ?, 'pending')
+    `);
+
+    const result = insert.run(approvalKey, customerEmail, customerName);
+    const approvalId = result.lastInsertRowid;
+
+    // カード情報を挿入
+    const insertCard = db.prepare(`
+      INSERT INTO approval_cards (
+        approval_id, card_name, grade, price
+      ) VALUES (?, ?, ?, ?)
+    `);
+
+    if (cards && Array.isArray(cards)) {
+      for (const card of cards) {
+        insertCard.run(approvalId, card.name, card.grade, card.price);
+      }
+    }
+
+    // 承認メール送信
+    const approvalUrl = `${process.env.BASE_URL || 'https://daiko.kanucard.com'}/approval.html?key=${approvalKey}`;
+
+    await sendEmail({
+      to: customerEmail,
+      subject: '【KanuCard】買取承認のお願い',
+      html: `
+        <h2>買取承認のお願い</h2>
+        <p>${customerName}様</p>
+        <p>以下のURLから買取承認をお願いいたします。</p>
+        <p><a href="${approvalUrl}">${approvalUrl}</a></p>
+      `
+    });
+
+    logger.info('Approval request created', {
+      id: approvalId,
+      customerEmail,
+      admin: req.user.email
+    });
+
+    res.json({
+      success: true,
+      message: '承認申請を作成しました',
+      approvalId,
+      approvalKey
+    });
+  } catch (error) {
+    logger.error('Error creating approval request', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: '承認申請作成エラー'
+    });
+  }
+});
+
+// メッセージ一覧取得
+app.get('/api/messages/:requestId', authenticateAdmin, (req, res) => {
+  const db = getDatabase();
+
+  try {
+    const messages = db.prepare(`
+      SELECT * FROM messages
+      WHERE request_id = ?
+      ORDER BY created_at ASC
+    `).all(req.params.requestId);
+
+    res.json(messages);
+  } catch (error) {
+    logger.error('Error fetching messages', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'メッセージ取得エラー'
+    });
+  }
+});
+
+// メッセージ送信
+app.post('/api/messages', authenticateAdmin, (req, res) => {
+  const db = getDatabase();
+  const { requestId, message, sender } = req.body;
+
+  try {
+    const insert = db.prepare(`
+      INSERT INTO messages (
+        request_id, message, sender, created_at
+      ) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+
+    const result = insert.run(requestId, message, sender || 'admin');
+
+    logger.info('Message sent', {
+      id: result.lastInsertRowid,
+      requestId,
+      admin: req.user.email
+    });
+
+    res.json({
+      success: true,
+      message: 'メッセージを送信しました',
+      messageId: result.lastInsertRowid
+    });
+  } catch (error) {
+    logger.error('Error sending message', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'メッセージ送信エラー'
+    });
+  }
+});
+
+// メッセージ既読マーク
+app.patch('/api/messages/:requestId/read', authenticateAdmin, (req, res) => {
+  const db = getDatabase();
+
+  try {
+    const update = db.prepare(`
+      UPDATE messages
+      SET is_read = 1
+      WHERE request_id = ? AND sender != 'admin'
+    `);
+
+    update.run(req.params.requestId);
+
+    res.json({
+      success: true,
+      message: '既読にしました'
+    });
+  } catch (error) {
+    logger.error('Error marking messages as read', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: '既読マークエラー'
+    });
+  }
+});
+
+// バックアップ一覧取得（簡易実装）
+app.get('/api/backups', authenticateAdmin, (req, res) => {
+  res.json([]);
+});
+
+// バックアップ作成（簡易実装）
+app.post('/api/backup', authenticateAdmin, (req, res) => {
+  res.json({
+    success: true,
+    message: 'バックアップを作成しました'
+  });
+});
+
+// ヘルスチェック
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'admin-server',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// 404エラーハンドラー
+app.use(notFoundHandler);
+
+// エラーハンドラー
+app.use(errorHandler);
+
+// サーバー起動
+app.listen(port, () => {
+  console.log('========================================');
+  console.log(`✅ Admin Server running on port ${port}`);
+  console.log(`📱 Access: http://localhost:${port}`);
+  console.log('========================================');
+});
