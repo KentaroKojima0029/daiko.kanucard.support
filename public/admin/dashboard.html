@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理者ダッシュボード - PSA代行統合システム</title>
+    <link rel="stylesheet" href="/admin/css/dashboard.css">
+    <script>
+        // 認証チェック
+        (function() {
+            const authToken = localStorage.getItem('kanucard_admin_token');
+
+            if (!authToken) {
+                console.log('[Dashboard] 認証トークンがありません - ログインページへリダイレクト');
+                window.location.href = '/admin/login.html';
+                return;
+            }
+
+            // トークンの簡易検証
+            try {
+                function base64UrlDecode(str) {
+                    let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+                    while (base64.length % 4) base64 += '=';
+                    return atob(base64);
+                }
+
+                const parts = authToken.split('.');
+                if (parts.length !== 3) throw new Error('Invalid token');
+
+                const payload = JSON.parse(base64UrlDecode(parts[1]));
+
+                // 有効期限チェック
+                if (payload.exp && payload.exp * 1000 <= Date.now()) {
+                    console.log('[Dashboard] トークン期限切れ - ログインページへリダイレクト');
+                    localStorage.removeItem('kanucard_admin_token');
+                    localStorage.removeItem('kanucard_admin_user');
+                    window.location.href = '/admin/login.html';
+                    return;
+                }
+
+                // 管理者権限チェック
+                if (payload.role !== 'admin') {
+                    console.log('[Dashboard] 管理者権限がありません - ログインページへリダイレクト');
+                    localStorage.removeItem('kanucard_admin_token');
+                    localStorage.removeItem('kanucard_admin_user');
+                    window.location.href = '/admin/login.html';
+                    return;
+                }
+
+                console.log('[Dashboard] 認証成功');
+            } catch (e) {
+                console.error('[Dashboard] トークン検証エラー:', e);
+                localStorage.removeItem('kanucard_admin_token');
+                localStorage.removeItem('kanucard_admin_user');
+                window.location.href = '/admin/login.html';
+            }
+        })();
+    </script>
+</head>
+<body>
+    <div class="theme-toggle">
+        <button id="themeToggle" class="theme-btn" title="ダークモード切替">
+            <span class="theme-icon">🌙</span>
+        </button>
+    </div>
+
+    <div class="dashboard-container">
+        <!-- サイドバー -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>PSA代行システム</h2>
+                <p class="sidebar-subtitle">管理ダッシュボード</p>
+            </div>
+
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-view="overview">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">概要</span>
+                </button>
+                <button class="nav-item" data-view="agency">
+                    <span class="nav-icon">📦</span>
+                    <span class="nav-text">代行案件</span>
+                    <span class="badge" id="agencyBadge">0</span>
+                </button>
+                <button class="nav-item" data-view="approval">
+                    <span class="nav-icon">✅</span>
+                    <span class="nav-text">買取承認</span>
+                    <span class="badge" id="approvalBadge">0</span>
+                </button>
+                <button class="nav-item" data-view="messages">
+                    <span class="nav-icon">💬</span>
+                    <span class="nav-text">メッセージ</span>
+                    <span class="badge" id="messagesBadge">0</span>
+                </button>
+                <button class="nav-item" data-view="backup">
+                    <span class="nav-icon">💾</span>
+                    <span class="nav-text">バックアップ</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button id="refreshBtn" class="btn btn-secondary btn-block">
+                    <span class="btn-icon">🔄</span> データ更新
+                </button>
+            </div>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main class="main-content">
+            <!-- 概要ビュー -->
+            <div id="overviewView" class="view active">
+                <header class="view-header">
+                    <h1>概要</h1>
+                    <p class="view-subtitle">システム全体の状況を確認</p>
+                </header>
+
+                <div class="stats-grid">
+                    <div class="stat-card stat-primary">
+                        <div class="stat-icon">📦</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="statAgencyTotal">0</div>
+                            <div class="stat-label">代行案件（全体）</div>
+                        </div>
+                    </div>
+                    <div class="stat-card stat-warning">
+                        <div class="stat-icon">⏳</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="statAgencyPending">0</div>
+                            <div class="stat-label">代行案件（作業中）</div>
+                        </div>
+                    </div>
+                    <div class="stat-card stat-info">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="statApprovalTotal">0</div>
+                            <div class="stat-label">買取承認（全体）</div>
+                        </div>
+                    </div>
+                    <div class="stat-card stat-danger">
+                        <div class="stat-icon">⏰</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="statApprovalPending">0</div>
+                            <div class="stat-label">買取承認（未完了）</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>最近の代行案件</h3>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>日時</th>
+                                    <th>顧客名</th>
+                                    <th>カード数</th>
+                                    <th>ステータス</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentAgencyTable">
+                                <tr><td colspan="5" class="text-center">読み込み中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>最近の買取承認</h3>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>日時</th>
+                                    <th>顧客名</th>
+                                    <th>カード数</th>
+                                    <th>ステータス</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentApprovalTable">
+                                <tr><td colspan="4" class="text-center">読み込み中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 代行案件ビュー -->
+            <div id="agencyView" class="view">
+                <header class="view-header">
+                    <h1>代行案件管理</h1>
+                    <p class="view-subtitle">顧客からの代行依頼を管理</p>
+                </header>
+
+                <div class="filter-bar">
+                    <select id="agencyFilter" class="filter-select">
+                        <option value="all">すべて</option>
+                        <option value="pending">受付中</option>
+                        <option value="in_progress">作業中</option>
+                        <option value="completed">完了</option>
+                        <option value="cancelled">キャンセル</option>
+                    </select>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>日時</th>
+                                <th>顧客名</th>
+                                <th>メール</th>
+                                <th>電話</th>
+                                <th>カード数</th>
+                                <th>ステータス</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="agencyTableBody">
+                            <tr><td colspan="7" class="text-center">読み込み中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 買取承認ビュー -->
+            <div id="approvalView" class="view">
+                <header class="view-header">
+                    <h1>買取承認管理</h1>
+                    <p class="view-subtitle">カード買取の承認依頼を送信・管理</p>
+                </header>
+
+                <div class="card">
+                    <h3>新規承認申請</h3>
+                    <form id="approvalForm">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="approvalCustomerName">顧客名 <span class="required">*</span></label>
+                                <input type="text" id="approvalCustomerName" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="approvalEmail">メールアドレス <span class="required">*</span></label>
+                                <input type="email" id="approvalEmail" required>
+                            </div>
+                        </div>
+
+                        <h4>カード情報</h4>
+                        <div id="approvalCardsContainer"></div>
+
+                        <button type="button" id="addApprovalCardBtn" class="btn btn-secondary">
+                            <span class="btn-icon">➕</span> カードを追加
+                        </button>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <span class="btn-icon">📧</span> 承認申請を送信
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <h3>承認リスト</h3>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>日時</th>
+                                    <th>顧客名</th>
+                                    <th>メール</th>
+                                    <th>カード数</th>
+                                    <th>ステータス</th>
+                                    <th>承認キー</th>
+                                </tr>
+                            </thead>
+                            <tbody id="approvalTableBody">
+                                <tr><td colspan="6" class="text-center">読み込み中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- メッセージビュー -->
+            <div id="messagesView" class="view">
+                <header class="view-header">
+                    <h1>メッセージ管理</h1>
+                    <p class="view-subtitle">顧客とのメッセージを確認・返信</p>
+                </header>
+
+                <div class="messages-layout">
+                    <div class="requests-list" id="requestsList">
+                        <h3>依頼一覧</h3>
+                        <div id="requestsListContainer">
+                            <!-- 依頼リストがここに表示される -->
+                        </div>
+                    </div>
+
+                    <div class="message-detail" id="messageDetail">
+                        <div class="empty-state">
+                            <div class="empty-icon">💬</div>
+                            <p>依頼を選択してメッセージを表示</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- バックアップビュー -->
+            <div id="backupView" class="view">
+                <header class="view-header">
+                    <h1>バックアップ管理</h1>
+                    <p class="view-subtitle">データのバックアップと復元</p>
+                </header>
+
+                <div class="card">
+                    <h3>バックアップ作成</h3>
+                    <p>現在のデータを手動でバックアップします。自動バックアップは1時間ごとに実行されます。</p>
+                    <button id="createBackupBtn" class="btn btn-primary">
+                        <span class="btn-icon">💾</span> バックアップを作成
+                    </button>
+                </div>
+
+                <div class="card">
+                    <h3>バックアップ一覧</h3>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>日時</th>
+                                    <th>サイズ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="backupTableBody">
+                                <tr><td colspan="2" class="text-center">読み込み中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- モーダル: 案件詳細 -->
+    <div id="agencyDetailModal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>代行案件詳細</h3>
+                <button class="modal-close" onclick="closeAgencyDetailModal()">✕</button>
+            </div>
+            <div class="modal-body" id="agencyDetailContent">
+                <!-- 詳細がここに表示される -->
+            </div>
+        </div>
+    </div>
+
+    <div id="messageBox" class="message-box"></div>
+
+    <script src="/admin/js/dashboard.js"></script>
+</body>
+</html>
