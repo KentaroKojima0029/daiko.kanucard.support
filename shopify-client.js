@@ -463,7 +463,7 @@ async function listAllCustomers(limit = 10) {
       count: customers.length,
       customers: customers.map(c => ({
         id: c.id,
-        name: `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'No name',
+        name: `${c.lastName || ''} ${c.firstName || ''}`.trim() || 'No name',
         email: c.email || 'No email',
         phone: c.phone || c.defaultAddress?.phone || 'No phone',
         ordersCount: c.numberOfOrders,
